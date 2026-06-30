@@ -1,0 +1,2620 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>poker</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111714;
+        --panel: #18221d;
+        --panel-2: #202c26;
+        --text: #eef7f0;
+        --muted: #a9b8ae;
+        --line: #324238;
+        --accent: #38c172;
+        --accent-2: #f4c95d;
+        --danger: #ff6b6b;
+        --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+        background: radial-gradient(
+          circle at top left,
+          #1d3a2a 0,
+          #111714 42%,
+          #0c100e 100%
+        );
+        color: var(--text);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .app {
+        width: min(1080px, 100%);
+        margin: 0 auto;
+        padding: 18px clamp(14px, 3vw, 28px) 28px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(26px, 5vw, 40px);
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .setup {
+        background: rgba(24, 34, 29, 0.92);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        box-shadow: var(--shadow);
+        margin-bottom: 14px;
+      }
+
+      .setup-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+        align-items: end;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      input,
+      select {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #0f1512;
+        color: var(--text);
+        padding: 0 10px;
+        outline: none;
+      }
+
+      input:focus,
+      select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(56, 193, 114, 0.16);
+      }
+
+      .check-row {
+        display: flex;
+        min-height: 42px;
+        align-items: center;
+        gap: 8px;
+        color: var(--text);
+      }
+
+      input[type="checkbox"] {
+        width: 18px;
+        min-height: 18px;
+        accent-color: var(--accent);
+      }
+
+      .btn {
+        min-height: 42px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: var(--panel-2);
+        color: var(--text);
+        padding: 0 12px;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+
+      .btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.48;
+      }
+
+      .btn.primary {
+        background: var(--accent);
+        color: #06110b;
+        font-weight: 700;
+      }
+
+      .btn.warn {
+        background: #463a1f;
+        color: #ffe7a6;
+      }
+      .btn.danger {
+        background: #3f2020;
+        color: #ffd0d0;
+      }
+
+      .table {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .console,
+      .controls {
+        background: rgba(13, 18, 15, 0.92);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .console {
+        min-height: 560px;
+        max-height: calc(100vh - 235px);
+        overflow: auto;
+        padding: 14px;
+        scroll-behavior: smooth;
+      }
+
+      .output {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font:
+          14px/1.55 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          "Liberation Mono",
+          monospace;
+        color: #eaf7ed;
+      }
+
+      .controls {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        position: sticky;
+        top: 12px;
+      }
+
+      .prompt {
+        min-height: 42px;
+        padding: 10px;
+        background: #101713;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--accent-2);
+        font-size: 13px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+      }
+
+      .quick-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .amount-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      body.playing {
+        padding-bottom: 124px;
+      }
+
+      .setup {
+        transition:
+          border-color 160ms ease,
+          background 160ms ease;
+      }
+
+      .setup summary,
+      .log-panel summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 32px;
+        cursor: pointer;
+        color: var(--muted);
+        list-style: none;
+        user-select: none;
+      }
+
+      .setup summary::-webkit-details-marker,
+      .log-panel summary::-webkit-details-marker {
+        display: none;
+      }
+
+      #setupSummary {
+        overflow: hidden;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text);
+        font-size: 12px;
+      }
+
+      body.playing .setup {
+        padding: 10px 12px;
+        box-shadow: none;
+      }
+
+      body.playing .setup:not([open]) {
+        background: rgba(16, 23, 19, 0.82);
+      }
+
+      .setup[open] .setup-grid {
+        margin-top: 12px;
+      }
+
+      .game-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 308px;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .table-top,
+      .stats-strip,
+      .action-panel,
+      .felt,
+      .players-panel,
+      .review-panel,
+      .log-panel {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(13, 18, 15, 0.78);
+        box-shadow: var(--shadow);
+      }
+
+      .table-top {
+        grid-column: 1 / 2;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .eyebrow {
+        color: var(--accent-2);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      h2 {
+        margin: 2px 0 0;
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      .icon-btn {
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        padding: 0 12px;
+      }
+
+      .stats-strip {
+        grid-column: 1 / 2;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        overflow: hidden;
+      }
+
+      .stats-strip div {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+        padding: 12px;
+        border-right: 1px solid rgba(255, 255, 255, 0.07);
+      }
+
+      .stats-strip div:last-child {
+        border-right: 0;
+      }
+
+      .stats-strip span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .stats-strip strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 18px;
+      }
+
+      .action-panel {
+        grid-column: 1 / 2;
+        display: grid;
+        gap: 10px;
+        padding: 12px 14px;
+        background:
+          linear-gradient(
+            135deg,
+            rgba(244, 201, 93, 0.14),
+            rgba(56, 193, 114, 0.05)
+          ),
+          rgba(13, 18, 15, 0.82);
+      }
+
+      .action-focus {
+        min-height: 34px;
+        border-left: 3px solid var(--accent-2);
+        padding-left: 10px;
+        color: var(--text);
+        font-size: 18px;
+        font-weight: 850;
+        line-height: 1.35;
+      }
+
+      .felt {
+        grid-column: 1 / 2;
+        position: relative;
+        min-height: 268px;
+        padding: 18px;
+        background:
+          radial-gradient(
+            circle at 50% 35%,
+            rgba(56, 193, 114, 0.18),
+            transparent 42%
+          ),
+          linear-gradient(
+            145deg,
+            rgba(15, 75, 45, 0.92),
+            rgba(10, 33, 24, 0.94)
+          );
+      }
+
+      .zone {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      .zone:last-child {
+        margin-bottom: 0;
+      }
+
+      .zone-title,
+      .section-title {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .cards {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        min-height: 72px;
+        align-items: center;
+      }
+
+      .card {
+        display: grid;
+        width: 48px;
+        height: 66px;
+        place-items: center;
+        border-radius: 7px;
+        background: #f5f1e8;
+        color: #141817;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+        font-weight: 800;
+      }
+
+      .card.red {
+        color: #b4232c;
+      }
+
+      .card.empty {
+        border: 1px dashed rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(255, 255, 255, 0.34);
+        box-shadow: none;
+      }
+
+      .card .rank {
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      .card .suit {
+        font-size: 17px;
+        line-height: 1;
+      }
+
+      .hero-cards .card {
+        width: 58px;
+        height: 78px;
+      }
+
+      .players-panel {
+        grid-column: 2 / 3;
+        grid-row: 1 / span 3;
+        padding: 14px;
+      }
+
+      .players-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .player-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      }
+
+      .player-row:last-child {
+        border-bottom: 0;
+      }
+
+      .player-main {
+        min-width: 0;
+      }
+
+      .player-name {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        min-width: 0;
+        font-weight: 700;
+      }
+
+      .player-name span:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .player-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .player-stack {
+        text-align: right;
+        font-weight: 800;
+      }
+
+      .badge {
+        border-radius: 999px;
+        background: rgba(244, 201, 93, 0.14);
+        color: var(--accent-2);
+        padding: 2px 7px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .player-row.active-turn {
+        color: var(--accent-2);
+      }
+
+      .action-pill,
+      .round-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1;
+      }
+
+      .round-pill {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--muted);
+      }
+
+      .action-pill.active,
+      .action-pill.bet,
+      .action-pill.raise,
+      .action-pill.allin {
+        background: rgba(244, 201, 93, 0.18);
+        color: #ffe08a;
+        box-shadow: inset 0 0 0 1px rgba(244, 201, 93, 0.28);
+      }
+
+      .action-pill.call,
+      .action-pill.check {
+        background: rgba(56, 193, 114, 0.16);
+        color: #76e6a2;
+        box-shadow: inset 0 0 0 1px rgba(56, 193, 114, 0.24);
+      }
+
+      .action-pill.fold {
+        background: rgba(255, 107, 107, 0.16);
+        color: #ff9c9c;
+        box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.22);
+      }
+
+      .action-pill.wait {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+      }
+
+      .review-panel {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+        background:
+          linear-gradient(135deg, rgba(244, 201, 93, 0.12), rgba(13, 18, 15, 0.86)),
+          rgba(13, 18, 15, 0.86);
+      }
+
+      .review-panel[hidden] {
+        display: none;
+      }
+
+      .review-board {
+        display: grid;
+        gap: 8px;
+      }
+
+      .review-board > span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .review-board-cards {
+        min-height: 58px;
+      }
+
+      .review-board-cards .card {
+        width: 42px;
+        height: 58px;
+      }
+
+      .review-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .review-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .review-row.winner {
+        color: var(--accent-2);
+      }
+
+      .review-main {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .review-name {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        align-items: center;
+        font-weight: 850;
+      }
+
+      .review-hand {
+        display: flex;
+        gap: 6px;
+      }
+
+      .review-hand .card {
+        width: 36px;
+        height: 50px;
+        border-radius: 6px;
+      }
+
+      .review-hand .card .rank {
+        font-size: 15px;
+      }
+
+      .review-hand .card .suit {
+        font-size: 14px;
+      }
+
+      .review-result {
+        text-align: right;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .log-panel {
+        grid-column: 1 / -1;
+        padding: 12px 14px;
+      }
+
+      .recent-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0 12px;
+      }
+
+      .log-chip {
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.07);
+        color: var(--text);
+        padding: 6px 9px;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .log-chip.bet,
+      .log-chip.raise,
+      .log-chip.allin {
+        background: rgba(244, 201, 93, 0.18);
+        color: #ffe08a;
+      }
+
+      .log-chip.call,
+      .log-chip.check {
+        background: rgba(56, 193, 114, 0.15);
+        color: #86ecad;
+      }
+
+      .log-chip.fold {
+        background: rgba(255, 107, 107, 0.15);
+        color: #ffabab;
+      }
+
+      .log-panel .console {
+        max-height: 280px;
+        min-height: 180px;
+        box-shadow: none;
+      }
+
+      .controls {
+        grid-column: 2 / 3;
+        grid-row: 4 / span 2;
+      }
+
+      @media (max-width: 780px) {
+        .app {
+          padding-bottom: 18px;
+        }
+        header {
+          display: block;
+        }
+        .setup-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .setup-grid .wide {
+          grid-column: span 2;
+        }
+        .game-shell {
+          grid-template-columns: 1fr;
+        }
+        .table-top,
+        .stats-strip,
+        .action-panel,
+        .felt,
+        .players-panel,
+        .review-panel,
+        .log-panel,
+        .controls {
+          grid-column: 1;
+          grid-row: auto;
+        }
+        .table-top {
+          padding: 12px;
+        }
+        h2 {
+          font-size: 22px;
+        }
+        .stats-strip div {
+          padding: 10px 9px;
+        }
+        .action-panel {
+          padding: 11px 12px;
+        }
+        .action-focus {
+          font-size: 16px;
+        }
+        .felt {
+          min-height: 230px;
+          padding: 14px;
+        }
+        .players-panel {
+          padding: 12px;
+        }
+        .log-panel {
+          margin-bottom: 114px;
+        }
+        .game-shell .controls {
+          position: fixed;
+          top: auto;
+          right: 10px;
+          bottom: max(10px, env(safe-area-inset-bottom));
+          left: 10px;
+          z-index: 20;
+          padding: 10px;
+          border-color: rgba(255, 255, 255, 0.14);
+          background: rgba(12, 17, 14, 0.96);
+          backdrop-filter: blur(16px);
+        }
+        .prompt {
+          min-height: 32px;
+          padding: 7px 8px;
+        }
+        .game-shell .quick-grid {
+          gap: 7px;
+        }
+        .game-shell .btn {
+          min-height: 40px;
+        }
+        .table {
+          grid-template-columns: 1fr;
+        }
+        .console {
+          min-height: 430px;
+          max-height: 56vh;
+          padding: 12px;
+        }
+        .table .controls {
+          position: static;
+          gap: 10px;
+        }
+        .output {
+          font-size: 13px;
+        }
+        .quick-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .btn {
+          padding: 0 8px;
+        }
+      }
+
+      @media (max-width: 430px) {
+        .setup-grid {
+          grid-template-columns: 1fr;
+        }
+        .setup-grid .wide {
+          grid-column: auto;
+        }
+        .quick-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .stats-strip {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .stats-strip div:nth-child(2) {
+          border-right: 0;
+        }
+        .stats-strip div:nth-child(-n + 2) {
+          border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        .card {
+          width: 44px;
+          height: 60px;
+        }
+        .hero-cards .card {
+          width: 54px;
+          height: 72px;
+        }
+        .amount-row {
+          grid-template-columns: 1fr 1fr;
+        }
+        .amount-row input {
+          grid-column: 1 / -1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <div>
+          <h1>poker</h1>
+        </div>
+      </header>
+
+      <details class="setup" id="setupPanel" open aria-label="游戏配置">
+        <summary>
+          <span>基础设定</span>
+          <span id="setupSummary">6人 / 1000 / 盲注 5-10 / 普通 / 水下开</span>
+        </summary>
+        <form id="setupForm" class="setup-grid">
+          <label
+            >总人数
+            <input
+              id="playerCount"
+              type="number"
+              min="2"
+              max="9"
+              value="6"
+              inputmode="numeric"
+            />
+          </label>
+          <label
+            >初始筹码
+            <input
+              id="initialStack"
+              type="number"
+              min="1"
+              value="1000"
+              inputmode="numeric"
+            />
+          </label>
+          <label
+            >小盲注
+            <input
+              id="smallBlind"
+              type="number"
+              min="1"
+              value="5"
+              inputmode="numeric"
+            />
+          </label>
+          <label
+            >大盲注
+            <input
+              id="bigBlind"
+              type="number"
+              min="2"
+              value="10"
+              inputmode="numeric"
+            />
+          </label>
+          <label
+            >AI 难度
+            <select id="difficulty">
+              <option value="简单">简单</option>
+              <option value="普通" selected>普通</option>
+              <option value="困难">困难</option>
+            </select>
+          </label>
+          <label class="wide"
+            >水下模式
+            <span class="check-row"
+              ><input id="underwater" type="checkbox" checked /> 开启</span
+            >
+          </label>
+          <button id="startBtn" class="btn primary wide" type="submit">
+            开始游戏
+          </button>
+        </form>
+      </details>
+
+      <section class="game-shell" id="gameShell" aria-label="游戏区">
+        <div class="table-top">
+          <div>
+            <div class="eyebrow" id="handLabel">未开始</div>
+            <h2 id="streetLabel">等待发牌</h2>
+          </div>
+          <button class="icon-btn" data-command="q" disabled aria-label="退出">
+            退出
+          </button>
+        </div>
+
+        <div class="stats-strip">
+          <div><span>位置</span><strong id="positionLabel">-</strong></div>
+          <div><span>底池</span><strong id="potValue">0</strong></div>
+          <div><span>最高注</span><strong id="currentBetValue">0</strong></div>
+          <div><span>需跟注</span><strong id="toCallValue">0</strong></div>
+        </div>
+
+        <section class="action-panel" aria-label="本轮行动">
+          <div class="section-title">本轮行动</div>
+          <div class="action-focus" id="actionFocus">暂无行动</div>
+          <div class="recent-list" id="recentActions">暂无</div>
+        </section>
+
+        <section class="felt" aria-label="牌桌">
+          <div class="zone">
+            <div class="zone-title">公共牌</div>
+            <div class="cards board-cards" id="boardCards"></div>
+          </div>
+          <div class="zone hero-zone">
+            <div class="zone-title">你的手牌</div>
+            <div class="cards hero-cards" id="heroCards"></div>
+          </div>
+        </section>
+
+        <section class="players-panel" aria-label="玩家">
+          <div class="section-title">玩家</div>
+          <div id="playersList" class="players-list"></div>
+        </section>
+
+        <section class="review-panel" id="reviewPanel" aria-label="本手复盘" hidden>
+          <div class="section-title">本手复盘</div>
+          <div class="review-board">
+            <span>完整公共牌</span>
+            <div class="cards review-board-cards" id="reviewBoardCards"></div>
+          </div>
+          <div class="review-list" id="reviewList"></div>
+        </section>
+
+        <details class="log-panel">
+          <summary>
+            <span>完整记录</span>
+            <span>展开</span>
+          </summary>
+          <div class="console" id="console" aria-live="polite">
+            <pre class="output" id="output">设置参数后点击“开始游戏”。</pre>
+          </div>
+        </details>
+
+        <aside class="controls" aria-label="操作面板">
+          <div class="prompt" id="prompt">等待开始</div>
+          <div class="quick-grid">
+            <button class="btn danger" data-command="f" disabled>弃牌</button>
+            <button
+              class="btn primary"
+              id="actionCallBtn"
+              data-command="c"
+              disabled
+            >
+              过牌
+            </button>
+            <button class="btn warn" data-command="a" disabled>全下</button>
+            <button class="btn" data-command="" disabled>继续</button>
+          </div>
+          <div class="amount-row">
+            <input
+              id="amountInput"
+              type="number"
+              min="1"
+              value="50"
+              inputmode="numeric"
+              disabled
+              aria-label="下注金额"
+            />
+            <button class="btn" id="betBtn" type="button" disabled>下注</button>
+            <button class="btn" id="raiseBtn" type="button" disabled>
+              加注
+            </button>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const SUITS = ["S", "H", "D", "C"];
+      const SUIT_NAMES = { S: "黑桃", H: "红桃", D: "方片", C: "梅花" };
+      const RANK_NAMES = {
+        2: "2",
+        3: "3",
+        4: "4",
+        5: "5",
+        6: "6",
+        7: "7",
+        8: "8",
+        9: "9",
+        10: "10",
+        11: "J",
+        12: "Q",
+        13: "K",
+        14: "A",
+      };
+
+      class Random {
+        constructor(seed = Date.now()) {
+          this.seed = seed >>> 0;
+        }
+
+        next() {
+          this.seed = (this.seed + 0x6d2b79f5) >>> 0;
+          let t = this.seed;
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        }
+
+        int(min, max) {
+          return Math.floor(this.next() * (max - min + 1)) + min;
+        }
+      }
+
+      class Card {
+        constructor(rank, suit) {
+          this.rank = rank;
+          this.suit = suit;
+        }
+
+        key() {
+          return `${this.rank}${this.suit}`;
+        }
+
+        text() {
+          return `${RANK_NAMES[this.rank]}${SUIT_NAMES[this.suit]}`;
+        }
+      }
+
+      class Deck {
+        constructor(rng = new Random()) {
+          this.rng = rng;
+          this.cards = [];
+          for (const suit of SUITS) {
+            for (let rank = 2; rank <= 14; rank += 1) {
+              this.cards.push(new Card(rank, suit));
+            }
+          }
+        }
+
+        shuffle() {
+          for (let i = this.cards.length - 1; i > 0; i -= 1) {
+            const j = this.rng.int(0, i);
+            [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+          }
+        }
+
+        deal(count = 1) {
+          if (count > this.cards.length) {
+            throw new Error("牌堆剩余牌数不足");
+          }
+          return this.cards.splice(0, count);
+        }
+      }
+
+      const HAND_NAMES = {
+        9: "皇家同花顺",
+        8: "同花顺",
+        7: "四条",
+        6: "葫芦",
+        5: "同花",
+        4: "顺子",
+        3: "三条",
+        2: "两对",
+        1: "一对",
+        0: "高牌",
+      };
+
+      class HandScore {
+        constructor(category, tiebreakers, cards = []) {
+          this.category = category;
+          this.tiebreakers = tiebreakers;
+          this.cards = cards;
+        }
+
+        name() {
+          return HAND_NAMES[this.category];
+        }
+
+        compare(other) {
+          if (this.category !== other.category) {
+            return this.category - other.category;
+          }
+          const length = Math.max(
+            this.tiebreakers.length,
+            other.tiebreakers.length,
+          );
+          for (let i = 0; i < length; i += 1) {
+            const diff =
+              (this.tiebreakers[i] ?? 0) - (other.tiebreakers[i] ?? 0);
+            if (diff !== 0) return diff;
+          }
+          return 0;
+        }
+      }
+
+      class HandEvaluator {
+        static best(cards) {
+          if (cards.length < 5) {
+            throw new Error("至少需要 5 张牌才能判断牌型");
+          }
+          let best = null;
+          for (const combo of combinations(cards, 5)) {
+            const score = HandEvaluator.scoreFive(combo);
+            if (!best || score.compare(best) > 0) {
+              best = score;
+            }
+          }
+          return best;
+        }
+
+        static scoreFive(cards) {
+          const five = [...cards].sort((a, b) => b.rank - a.rank);
+          const ranks = five.map((card) => card.rank);
+          const suits = five.map((card) => card.suit);
+          const counts = new Map();
+          for (const rank of ranks)
+            counts.set(rank, (counts.get(rank) || 0) + 1);
+          const grouped = [...counts.entries()].sort(
+            (a, b) => b[1] - a[1] || b[0] - a[0],
+          );
+          const isFlush = new Set(suits).size === 1;
+          const straightHigh = straightHighCard(ranks);
+
+          if (isFlush && straightHigh) {
+            return new HandScore(
+              straightHigh === 14 ? 9 : 8,
+              [straightHigh],
+              five,
+            );
+          }
+          if (grouped[0][1] === 4) {
+            const quad = grouped[0][0];
+            const kicker = Math.max(...ranks.filter((rank) => rank !== quad));
+            return new HandScore(7, [quad, kicker], five);
+          }
+          if (grouped[0][1] === 3 && grouped[1][1] === 2) {
+            return new HandScore(6, [grouped[0][0], grouped[1][0]], five);
+          }
+          if (isFlush) {
+            return new HandScore(
+              5,
+              [...ranks].sort((a, b) => b - a),
+              five,
+            );
+          }
+          if (straightHigh) {
+            return new HandScore(4, [straightHigh], five);
+          }
+          if (grouped[0][1] === 3) {
+            const trip = grouped[0][0];
+            const kickers = ranks
+              .filter((rank) => rank !== trip)
+              .sort((a, b) => b - a);
+            return new HandScore(3, [trip, ...kickers], five);
+          }
+          const pairs = [...counts.entries()]
+            .filter(([, count]) => count === 2)
+            .map(([rank]) => rank)
+            .sort((a, b) => b - a);
+          if (pairs.length === 2) {
+            const kicker = Math.max(
+              ...ranks.filter((rank) => !pairs.includes(rank)),
+            );
+            return new HandScore(2, [pairs[0], pairs[1], kicker], five);
+          }
+          if (pairs.length === 1) {
+            const pair = pairs[0];
+            const kickers = ranks
+              .filter((rank) => rank !== pair)
+              .sort((a, b) => b - a);
+            return new HandScore(1, [pair, ...kickers], five);
+          }
+          return new HandScore(
+            0,
+            [...ranks].sort((a, b) => b - a),
+            five,
+          );
+        }
+      }
+
+      const Stage = {
+        PREFLOP: "翻牌前",
+        FLOP: "翻牌圈",
+        TURN: "转牌圈",
+        RIVER: "河牌圈",
+        SHOWDOWN: "摊牌",
+      };
+
+      const ActionKind = {
+        FOLD: "fold",
+        CHECK_CALL: "check_call",
+        BET: "bet",
+        RAISE: "raise",
+        ALL_IN: "all_in",
+        STATUS: "status",
+        QUIT: "quit",
+      };
+
+      class Action {
+        constructor(kind, amount = null) {
+          this.kind = kind;
+          this.amount = amount;
+        }
+      }
+
+      class Player {
+        constructor(name, isHuman, stack) {
+          this.name = name;
+          this.isHuman = isHuman;
+          this.stack = stack;
+          this.hole = [];
+          this.folded = false;
+          this.allIn = false;
+          this.currentBet = 0;
+          this.totalBet = 0;
+          this.lastAction = "";
+          this.bluffStreak = 0;
+          this.eliminated = false;
+          this.handStartStack = stack;
+          this.underwaterHands = 0;
+          this.underwaterDebt = 0;
+        }
+
+        resetForHand() {
+          this.handStartStack = this.stack;
+          this.hole = [];
+          this.folded = false;
+          this.allIn = false;
+          this.currentBet = 0;
+          this.totalBet = 0;
+          this.lastAction = "";
+        }
+
+        resetForStreet() {
+          this.currentBet = 0;
+          this.lastAction = "";
+        }
+
+        get active() {
+          return !this.eliminated && !this.folded;
+        }
+      }
+
+      class InputParser {
+        static parse(raw) {
+          const text = raw.trim().toLowerCase();
+          if (!text) throw new Error("请输入命令");
+          const aliases = {
+            弃牌: ActionKind.FOLD,
+            fold: ActionKind.FOLD,
+            f: ActionKind.FOLD,
+            过牌: ActionKind.CHECK_CALL,
+            跟注: ActionKind.CHECK_CALL,
+            call: ActionKind.CHECK_CALL,
+            check: ActionKind.CHECK_CALL,
+            c: ActionKind.CHECK_CALL,
+            全下: ActionKind.ALL_IN,
+            allin: ActionKind.ALL_IN,
+            "all-in": ActionKind.ALL_IN,
+            a: ActionKind.ALL_IN,
+            状态: ActionKind.STATUS,
+            status: ActionKind.STATUS,
+            s: ActionKind.STATUS,
+            退出: ActionKind.QUIT,
+            quit: ActionKind.QUIT,
+            q: ActionKind.QUIT,
+          };
+          if (aliases[text]) return new Action(aliases[text]);
+
+          const parts = text.split(/\s+/);
+          if (parts.length === 2 && ["下注", "bet", "b"].includes(parts[0])) {
+            return new Action(ActionKind.BET, parseAmount(parts[1]));
+          }
+          if (parts.length === 2 && ["加注", "raise", "r"].includes(parts[0])) {
+            return new Action(ActionKind.RAISE, parseAmount(parts[1]));
+          }
+          throw new Error("无法识别命令");
+        }
+      }
+
+      class BotPlayer {
+        constructor(rng) {
+          this.rng = rng;
+        }
+
+        decide({
+          player,
+          players,
+          board,
+          stage,
+          pot,
+          toCall,
+          currentBet,
+          bigBlind,
+          difficulty,
+        }) {
+          const strength = this.strength(player.hole, board, stage);
+          const activeOpponents = players.filter(
+            (p) => p !== player && p.active,
+          ).length;
+          const params = this.params(difficulty);
+          const pressure = toCall / Math.max(pot + toCall, 1);
+          const bluff = this.shouldBluff(
+            player,
+            stage,
+            activeOpponents,
+            pressure,
+            params,
+          );
+
+          if (toCall <= 0) {
+            if (strength >= params.valueBet || bluff) {
+              return new Action(
+                ActionKind.BET,
+                this.betSize(pot, bigBlind, strength, bluff),
+              );
+            }
+            return new Action(ActionKind.CHECK_CALL);
+          }
+
+          if (strength >= params.raiseValue && pressure < 0.55) {
+            if (this.rng.next() < params.raiseRate) {
+              return new Action(
+                ActionKind.RAISE,
+                currentBet + this.betSize(pot, bigBlind, strength, false),
+              );
+            }
+            return new Action(ActionKind.CHECK_CALL);
+          }
+
+          if (bluff && pressure < params.bluffPressureCap) {
+            return new Action(
+              ActionKind.RAISE,
+              currentBet + Math.max(bigBlind, Math.floor(pot / 3)),
+            );
+          }
+
+          const callThreshold =
+            params.callBase + strength * params.callStrengthWeight;
+          return pressure <= callThreshold
+            ? new Action(ActionKind.CHECK_CALL)
+            : new Action(ActionKind.FOLD);
+        }
+
+        params(difficulty) {
+          if (difficulty === "简单") {
+            return {
+              valueBet: 0.66,
+              raiseValue: 0.82,
+              raiseRate: 0.25,
+              callBase: 0.08,
+              callStrengthWeight: 0.38,
+              bluff: 0.03,
+              bluffPressureCap: 0.18,
+            };
+          }
+          if (difficulty === "困难") {
+            return {
+              valueBet: 0.54,
+              raiseValue: 0.74,
+              raiseRate: 0.55,
+              callBase: 0.16,
+              callStrengthWeight: 0.55,
+              bluff: 0.12,
+              bluffPressureCap: 0.32,
+            };
+          }
+          return {
+            valueBet: 0.6,
+            raiseValue: 0.78,
+            raiseRate: 0.4,
+            callBase: 0.12,
+            callStrengthWeight: 0.46,
+            bluff: 0.07,
+            bluffPressureCap: 0.25,
+          };
+        }
+
+        strength(hole, board, stage) {
+          if (stage === Stage.PREFLOP) {
+            const [a, b] = hole.map((card) => card.rank).sort((x, y) => y - x);
+            const suited = hole[0].suit === hole[1].suit;
+            if (a === b) return Math.min(0.58 + a / 28, 0.98);
+            let score = (a + b) / 30;
+            if (suited) score += 0.06;
+            if (Math.abs(a - b) === 1) score += 0.04;
+            return Math.min(score, 0.82);
+          }
+          const score = HandEvaluator.best([...hole, ...board]);
+          return Math.min(
+            score.category / 9 +
+              score.tiebreakers
+                .slice(0, 2)
+                .reduce((sum, value) => sum + value, 0) /
+                224,
+            1,
+          );
+        }
+
+        shouldBluff(player, stage, activeOpponents, pressure, params) {
+          if (player.bluffStreak >= 2) return false;
+          const stageFactor = stage === Stage.PREFLOP ? 0.45 : 1;
+          const opponentFactor =
+            activeOpponents <= 1 ? 1.4 : activeOpponents === 2 ? 1 : 0.65;
+          const pressureFactor = Math.max(0.2, 1 - pressure * 2);
+          return (
+            this.rng.next() <
+            params.bluff * stageFactor * opponentFactor * pressureFactor
+          );
+        }
+
+        betSize(pot, bigBlind, strength, bluff) {
+          let base = Math.max(bigBlind, Math.floor(pot / (bluff ? 3 : 2)));
+          if (strength > 0.85) base = Math.max(base, Math.floor(pot * 0.75));
+          return Math.max(
+            bigBlind,
+            base + this.rng.int(0, Math.max(bigBlind, base)),
+          );
+        }
+      }
+
+      class GameEngine {
+        constructor(config = {}, options = {}) {
+          this.config = {
+            playerCount: config.playerCount ?? 6,
+            initialStack: config.initialStack ?? 1000,
+            smallBlind: config.smallBlind ?? 5,
+            bigBlind: config.bigBlind ?? 10,
+            underwater: config.underwater ?? true,
+            difficulty: config.difficulty ?? "普通",
+            pauseBetweenStreets: config.pauseBetweenStreets ?? true,
+          };
+          if (this.config.playerCount < 2 || this.config.playerCount > 9) {
+            throw new Error("人数必须在 2-9 之间");
+          }
+          this.rng = options.rng ?? new Random();
+          this.readInput = options.readInput;
+          this.writeOutput =
+            options.writeOutput ?? ((text) => console.log(text));
+          this.players = [
+            new Player("你", true, this.config.initialStack),
+            ...Array.from(
+              { length: this.config.playerCount - 1 },
+              (_, i) =>
+                new Player(`AI-${i + 1}`, false, this.config.initialStack),
+            ),
+          ];
+          this.dealer = this.rng.int(0, this.players.length - 1);
+          this.handNo = 0;
+          this.deck = null;
+          this.board = [];
+          this.stage = Stage.PREFLOP;
+          this.pot = 0;
+          this.currentBet = 0;
+          this.minRaise = this.config.bigBlind;
+          this.actionIndex = null;
+          this.pendingHumanRaw = null;
+          this.logs = [];
+          this.bot = new BotPlayer(this.rng);
+          this.quitRequested = false;
+        }
+
+        async run() {
+          this.writeOutput("\n德州扑克开始。输入“退出”或 q 可随时结束。");
+          while (!this.quitRequested) {
+            await this.playHand();
+            if (this.quitRequested) break;
+            const answer = (
+              await this.readInput(
+                "\n继续下一手？直接回车继续，输入 退出/q 结束：",
+              )
+            )
+              .trim()
+              .toLowerCase();
+            if (["退出", "q", "quit"].includes(answer)) break;
+          }
+          this.writeOutput("游戏结束。");
+        }
+
+        async playHand() {
+          this.handNo += 1;
+          this.stage = Stage.PREFLOP;
+          this.board = [];
+          this.pot = 0;
+          this.currentBet = 0;
+          this.minRaise = this.config.bigBlind;
+          this.logs = [];
+          this.deck = new Deck(this.rng);
+          this.deck.shuffle();
+          for (const player of this.players) {
+            player.eliminated = !this.config.underwater && player.stack <= 0;
+            if (this.config.underwater && player.stack <= 0)
+              this.borrowOneHand(player);
+            player.resetForHand();
+            if (player.eliminated) {
+              player.folded = true;
+              player.lastAction = "已淘汰";
+            }
+          }
+          if (this.activeSeatIndices().length < 2) {
+            this.writeOutput("可继续游戏的玩家不足 2 人，游戏结束。");
+            this.quitRequested = true;
+            return;
+          }
+          if (this.players[this.dealer].eliminated)
+            this.dealer = this.nextActiveIndex(this.dealer);
+
+          const [smallBlindIdx, bigBlindIdx] = this.blindIndices();
+          this.postBlind(smallBlindIdx, this.config.smallBlind, "小盲");
+          this.postBlind(bigBlindIdx, this.config.bigBlind, "大盲");
+          this.currentBet = this.players[bigBlindIdx].currentBet;
+
+          for (let i = 0; i < 2; i += 1) {
+            for (const player of this.players) {
+              if (!player.eliminated) player.hole.push(...this.deck.deal(1));
+            }
+          }
+
+          await this.bettingRound(this.nextIndex(bigBlindIdx));
+          if (this.quitRequested) return;
+          if (this.activeCount() > 1) {
+            this.dealBoard(3);
+            this.stage = Stage.FLOP;
+            this.resetStreetBets();
+            await this.pauseForStreet();
+            await this.bettingRound(this.nextIndex(this.dealer));
+          }
+          if (this.quitRequested) return;
+          if (this.activeCount() > 1) {
+            this.dealBoard(1);
+            this.stage = Stage.TURN;
+            this.resetStreetBets();
+            await this.pauseForStreet();
+            await this.bettingRound(this.nextIndex(this.dealer));
+          }
+          if (this.quitRequested) return;
+          if (this.activeCount() > 1) {
+            this.dealBoard(1);
+            this.stage = Stage.RIVER;
+            this.resetStreetBets();
+            await this.pauseForStreet();
+            await this.bettingRound(this.nextIndex(this.dealer));
+          }
+          if (this.quitRequested) return;
+          this.stage = Stage.SHOWDOWN;
+          this.settleHand();
+          this.dealer = this.nextActiveIndex(this.dealer);
+        }
+
+        postBlind(idx, amount, label) {
+          const player = this.players[idx];
+          const committed = this.commit(player, amount);
+          player.currentBet += committed;
+          this.logs.push(`${player.name} 支付${label} ${committed}`);
+        }
+
+        borrowOneHand(player) {
+          player.stack = this.config.initialStack;
+          player.underwaterHands += 1;
+          player.underwaterDebt += this.config.initialStack;
+          player.lastAction = `水下${player.underwaterHands}手`;
+          this.logs.push(
+            `${player.name} 水下借入一手 ${this.config.initialStack}`,
+          );
+        }
+
+        dealBoard(count) {
+          this.board.push(...this.deck.deal(count));
+          this.logs.push(`发公共牌：${formatCards(this.board)}`);
+        }
+
+        resetStreetBets() {
+          this.currentBet = 0;
+          for (const player of this.players) player.resetForStreet();
+        }
+
+        async pauseForStreet() {
+          const human = this.players.find((player) => player.isHuman);
+          if (
+            !this.config.pauseBetweenStreets ||
+            !human ||
+            !human.active ||
+            human.allIn
+          )
+            return;
+
+          this.writeOutput(this.renderState());
+          const raw = (
+            await this.readInput(
+              "\n按回车进入本轮行动，也可直接输入本轮动作 / Enter or action: ",
+            )
+          ).trim();
+          if (raw) this.pendingHumanRaw = raw;
+        }
+
+        async bettingRound(startIdx) {
+          const acted = new Set();
+          let idx = this.nextActionableIndex(startIdx - 1);
+          while (idx !== null && this.activeCount() > 1) {
+            if (this.roundComplete(acted)) return;
+            const player = this.players[idx];
+            let action;
+            this.actionIndex = idx;
+            if (player.isHuman) {
+              action = await this.readHumanAction(player);
+              if (action.kind === ActionKind.QUIT) {
+                this.quitRequested = true;
+                this.actionIndex = null;
+                return;
+              }
+              if (action.kind === ActionKind.STATUS) {
+                this.writeOutput(this.renderState());
+                continue;
+              }
+            } else {
+              action = this.bot.decide({
+                player,
+                players: this.players,
+                board: this.board,
+                stage: this.stage,
+                pot: this.pot,
+                toCall: this.currentBet - player.currentBet,
+                currentBet: this.currentBet,
+                bigBlind: this.config.bigBlind,
+                difficulty: this.config.difficulty,
+              });
+            }
+            const raised = this.applyAction(idx, action);
+            this.actionIndex = null;
+            if (raised) {
+              acted.clear();
+              acted.add(idx);
+            } else {
+              acted.add(idx);
+            }
+            idx = this.nextActionableIndex(idx);
+          }
+        }
+
+        async readHumanAction(player) {
+          while (true) {
+            this.writeOutput(this.renderState());
+            const raw = this.pendingHumanRaw ?? (await this.readInput("> "));
+            this.pendingHumanRaw = null;
+            try {
+              const action = InputParser.parse(raw);
+              if ([ActionKind.STATUS, ActionKind.QUIT].includes(action.kind))
+                return action;
+              this.validateAction(player, action);
+              return action;
+            } catch (error) {
+              this.writeOutput(`输入无效：${error.message}`);
+            }
+          }
+        }
+
+        validateAction(player, action) {
+          const toCall = this.currentBet - player.currentBet;
+          const additional = action.amount
+            ? action.amount - player.currentBet
+            : 0;
+          if (action.kind === ActionKind.BET) {
+            if (this.currentBet > 0)
+              throw new Error("当前已有下注，请使用“跟注”或“加注”");
+            if (!action.amount || action.amount < this.config.bigBlind)
+              throw new Error(`下注至少为大盲 ${this.config.bigBlind}`);
+            if (additional > player.stack)
+              throw new Error("筹码不足，请选择全下");
+          }
+          if (action.kind === ActionKind.RAISE) {
+            if (this.currentBet <= 0)
+              throw new Error("当前无人下注，请使用“下注”");
+            if (!action.amount || action.amount <= this.currentBet)
+              throw new Error(
+                `加注金额必须高于当前最高下注 ${this.currentBet}`,
+              );
+            if (additional > player.stack)
+              throw new Error("筹码不足，请选择全下");
+          }
+          if (action.kind === ActionKind.CHECK_CALL && toCall > player.stack) {
+            throw new Error("筹码不足以跟注，请选择全下");
+          }
+        }
+
+        applyAction(idx, action) {
+          const player = this.players[idx];
+          const toCall = this.currentBet - player.currentBet;
+          let raised = false;
+
+          if (action.kind === ActionKind.FOLD) {
+            player.folded = true;
+            player.lastAction = "弃牌";
+            this.logs.push(`${player.name} 弃牌`);
+            return false;
+          }
+          if (action.kind === ActionKind.CHECK_CALL) {
+            if (toCall <= 0) {
+              player.lastAction = "过牌";
+              this.logs.push(`${player.name} 过牌`);
+            } else {
+              const committed = this.commit(player, toCall);
+              player.currentBet += committed;
+              player.lastAction = `跟注 ${committed}`;
+              this.logs.push(`${player.name} 跟注 ${committed}`);
+            }
+            return false;
+          }
+          if (action.kind === ActionKind.BET) {
+            const committed = this.commit(player, action.amount);
+            player.currentBet += committed;
+            this.currentBet = player.currentBet;
+            player.lastAction = `下注 ${this.currentBet}`;
+            this.logs.push(`${player.name} 下注 ${this.currentBet}`);
+            raised = true;
+          }
+          if (action.kind === ActionKind.RAISE) {
+            const committed = this.commit(
+              player,
+              action.amount - player.currentBet,
+            );
+            player.currentBet += committed;
+            if (player.currentBet > this.currentBet) {
+              this.currentBet = player.currentBet;
+              player.lastAction = `加注到 ${player.currentBet}`;
+              this.logs.push(`${player.name} 加注到 ${player.currentBet}`);
+              raised = true;
+            } else {
+              player.lastAction = `全下到 ${player.currentBet}`;
+              this.logs.push(`${player.name} 全下到 ${player.currentBet}`);
+            }
+          }
+          if (action.kind === ActionKind.ALL_IN) {
+            const committed = this.commit(player, this.allInAmount(player));
+            player.currentBet += committed;
+            player.allIn = true;
+            player.lastAction = `全下到 ${player.currentBet}`;
+            if (player.currentBet > this.currentBet) {
+              this.currentBet = player.currentBet;
+              raised = true;
+            }
+            this.logs.push(`${player.name} 全下到 ${player.currentBet}`);
+          }
+          if (raised && !player.isHuman) {
+            if (this.isLikelyBluff(player)) player.bluffStreak += 1;
+            else player.bluffStreak = 0;
+          }
+          return raised;
+        }
+
+        commit(player, amount) {
+          if (amount <= 0) return 0;
+          let committed = amount;
+          if (amount >= player.stack) {
+            committed = Math.max(0, player.stack);
+            player.allIn = true;
+          }
+          player.stack -= committed;
+          player.totalBet += committed;
+          this.pot += committed;
+          return committed;
+        }
+
+        allInAmount(player) {
+          return Math.max(0, player.stack);
+        }
+
+        settleHand() {
+          const active = this.players
+            .map((player, idx) => ({ player, idx }))
+            .filter(({ player }) => player.active);
+          this.writeOutput(this.renderState(true));
+          if (active.length === 1) {
+            active[0].player.stack += this.pot;
+            this.logs.push(`${active[0].player.name} 赢得底池 ${this.pot}`);
+            this.writeOutput(
+              `\n本手结束：${active[0].player.name} 获胜，赢得 ${this.pot}。`,
+            );
+            this.writeOutput(this.renderHandReview());
+            this.pot = 0;
+            return;
+          }
+
+          const scores = new Map();
+          for (const { player, idx } of active) {
+            scores.set(
+              idx,
+              HandEvaluator.best([...player.hole, ...this.board]),
+            );
+          }
+          this.settlePots(scores);
+          const winners = this.bestPlayers(active, scores);
+          const lines = [
+            "\n摊牌结果：",
+            `赢家：${winners.map(({ player }) => player.name).join("、")}`,
+            "",
+            "玩家    手牌                 牌型",
+            "------  -------------------  --------",
+          ];
+          for (const { player, idx } of active) {
+            const score = scores.get(idx);
+            lines.push(
+              `${player.name.padEnd(6, " ")}  ${formatCards(player.hole).padEnd(19, " ")}  ${score.name()}`,
+            );
+          }
+          lines.push("结算完成。");
+          this.writeOutput(lines.join("\n"));
+          this.writeOutput(this.renderHandReview(scores));
+          this.pot = 0;
+        }
+
+        renderHandReview(scores = null) {
+          const fullBoard = [
+            ...this.board,
+            ...this.deck.cards.slice(0, Math.max(0, 5 - this.board.length)),
+          ];
+          const lines = [
+            "",
+            "本手复盘：",
+            `完整公共牌：${formatCards(fullBoard)}`,
+            "",
+            "玩家手牌：",
+            "位置   玩家    状态     手牌                 牌型",
+            "-----  ------  -------  -------------------  --------",
+          ];
+          for (const [idx, player] of this.players.entries()) {
+            const score = scores?.get(idx);
+            const handName = score ? score.name() : "-";
+            lines.push(
+              `${this.positionName(idx).padEnd(5, " ")}  ${player.name.padEnd(6, " ")}  ${this.reviewStatus(player).padEnd(7, " ")}  ${formatCards(player.hole).padEnd(19, " ")}  ${handName}`,
+            );
+          }
+          return lines.join("\n");
+        }
+
+        bestPlayers(active, scores) {
+          let best = active[0];
+          for (const item of active.slice(1)) {
+            if (scores.get(item.idx).compare(scores.get(best.idx)) > 0)
+              best = item;
+          }
+          return active.filter(
+            (item) => scores.get(item.idx).compare(scores.get(best.idx)) === 0,
+          );
+        }
+
+        reviewStatus(player) {
+          let status;
+          if (player.eliminated) status = "已淘汰";
+          else if (player.folded) status = "已弃牌";
+          else if (player.allIn) status = "已全下";
+          else status = "未弃牌";
+          const underwater = this.underwaterLabel(player);
+          return underwater ? `${status} ${underwater}` : status;
+        }
+
+        settlePots(scores) {
+          const levels = [
+            ...new Set(
+              this.players.map((p) => p.totalBet).filter((bet) => bet > 0),
+            ),
+          ].sort((a, b) => a - b);
+          let previous = 0;
+          for (const level of levels) {
+            const contributors = this.players
+              .map((player, idx) => ({ player, idx }))
+              .filter(({ player }) => player.totalBet >= level);
+            const amount = (level - previous) * contributors.length;
+            const eligible = contributors.filter(({ player }) => player.active);
+            if (!eligible.length || amount <= 0) {
+              previous = level;
+              continue;
+            }
+            let best = eligible[0];
+            for (const item of eligible.slice(1)) {
+              if (scores.get(item.idx).compare(scores.get(best.idx)) > 0)
+                best = item;
+            }
+            const winners = eligible.filter(
+              (item) =>
+                scores.get(item.idx).compare(scores.get(best.idx)) === 0,
+            );
+            const share = Math.floor(amount / winners.length);
+            let remainder = amount % winners.length;
+            for (const { player } of winners) {
+              player.stack += share + (remainder > 0 ? 1 : 0);
+              if (remainder > 0) remainder -= 1;
+            }
+            this.logs.push(
+              `${winners.map(({ player }) => player.name).join("、")} 分得底池 ${amount}`,
+            );
+            previous = level;
+          }
+        }
+
+        renderState(showAll = false) {
+          const human = this.players[0];
+          const divider =
+            "------------------------------------------------------------";
+          const lines = [
+            "",
+            divider,
+            `第 ${this.handNo} 手 | ${this.stage} | 你的位置：${this.positionLabel(0)}`,
+            divider,
+            `公共牌：${formatCards(this.board)}`,
+            `你的手牌：${formatCards(human.hole)}`,
+            "",
+            divider,
+            `底池：${this.pot}`,
+            `当前最高下注：${this.currentBet}`,
+            `你需要跟注：${Math.max(0, this.currentBet - human.currentBet)}`,
+            "",
+            divider,
+            "座位：",
+            "标记  位置   玩家    筹码   本轮   状态",
+            "----  -----  ------  -----  -----  ------",
+          ];
+          for (const [idx, player] of this.players.entries()) {
+            lines.push(
+              `${this.seatMark(idx).padEnd(4, " ")}  ${this.positionName(idx).padEnd(5, " ")}  ${player.name.padEnd(6, " ")}  ${String(player.stack).padEnd(5, " ")}  ${String(player.currentBet).padEnd(5, " ")}  ${this.playerStatus(player, idx)}`,
+            );
+          }
+          lines.push("", divider, "最近行动：");
+          lines.push(...(this.logs.length ? this.logs.slice(-6) : ["无"]));
+          if (this.stage !== Stage.SHOWDOWN) {
+            lines.push("", divider, `请输入：${this.commandPrompt()}`);
+          }
+          lines.push(divider);
+          return lines.join("\n");
+        }
+
+        commandPrompt() {
+          const human = this.players[0];
+          const toCall = Math.max(0, this.currentBet - human.currentBet);
+          if (toCall > 0) {
+            return "弃牌/f，跟注/c，加注 金额/r 金额，全下/a，状态/s，退出/q";
+          }
+          return "弃牌/f，过牌/c，下注 金额/b 金额，全下/a，状态/s，退出/q";
+        }
+
+        playerStatus(player, idx) {
+          let status;
+          if (player.eliminated) status = "已淘汰";
+          else if (player.folded) status = "已弃牌";
+          else if (player.allIn) status = "已全下";
+          else if (idx === this.actionIndex) status = "行动中";
+          else status = player.lastAction || "等待";
+          const underwater = this.underwaterLabel(player);
+          return underwater ? `${status} ${underwater}` : status;
+        }
+
+        underwaterLabel(player) {
+          if (!player.underwaterHands || !player.underwaterDebt) return "";
+          return `水下${player.underwaterHands}手（-${player.underwaterDebt}）`;
+        }
+
+        seatMark(idx) {
+          const [smallBlindIdx, bigBlindIdx] = this.blindIndices();
+          const marks = [];
+          if (idx === this.dealer) marks.push("庄");
+          if (idx === smallBlindIdx) marks.push("小");
+          if (idx === bigBlindIdx) marks.push("大");
+          return marks.join("");
+        }
+
+        positionLabel(idx) {
+          const aliases = {
+            BTN: "BTN（按钮位）",
+            SB: "SB（小盲）",
+            BB: "BB（大盲）",
+            UTG: "UTG（枪口位）",
+            MP: "MP（中位）",
+            HJ: "HJ（劫位）",
+            CO: "CO（关煞位）",
+          };
+          const position = this.positionName(idx);
+          return aliases[position] ?? position;
+        }
+
+        positionName(idx) {
+          if (this.players[idx].eliminated) return "-";
+          const [smallBlindIdx, bigBlindIdx] = this.blindIndices();
+          if (idx === this.dealer) return "BTN";
+          if (idx === smallBlindIdx) return "SB";
+          if (idx === bigBlindIdx) return "BB";
+
+          const activeSeats = this.activeSeatIndices();
+          const labelsByCount = {
+            4: ["UTG"],
+            5: ["UTG", "CO"],
+            6: ["UTG", "MP", "CO"],
+            7: ["UTG", "MP", "HJ", "CO"],
+            8: ["UTG", "UTG+1", "MP", "HJ", "CO"],
+            9: ["UTG", "UTG+1", "MP1", "MP2", "HJ", "CO"],
+          };
+          const labels = labelsByCount[activeSeats.length] ?? [];
+          let offset = 0;
+          let seat = this.nextActiveIndex(bigBlindIdx);
+          while (seat !== this.dealer) {
+            if (seat === idx) return labels[offset] ?? `P${offset + 1}`;
+            offset += 1;
+            seat = this.nextActiveIndex(seat);
+          }
+          return "";
+        }
+
+        roundComplete(acted) {
+          return this.players.every(
+            (player, idx) =>
+              !player.active ||
+              player.allIn ||
+              (player.currentBet === this.currentBet && acted.has(idx)),
+          );
+        }
+
+        activeCount() {
+          return this.players.filter((player) => player.active).length;
+        }
+
+        activeSeatIndices() {
+          return this.players
+            .map((player, idx) => ({ player, idx }))
+            .filter(({ player }) => !player.eliminated)
+            .map(({ idx }) => idx);
+        }
+
+        nextIndex(idx) {
+          return (idx + 1 + this.players.length) % this.players.length;
+        }
+
+        nextActiveIndex(idx) {
+          for (let step = 1; step <= this.players.length; step += 1) {
+            const next =
+              (idx + step + this.players.length) % this.players.length;
+            if (!this.players[next].eliminated) return next;
+          }
+          return idx;
+        }
+
+        nextActionableIndex(idx) {
+          if (this.players.every((player) => !player.active || player.allIn))
+            return null;
+          for (let step = 1; step <= this.players.length; step += 1) {
+            const next =
+              (idx + step + this.players.length) % this.players.length;
+            const player = this.players[next];
+            if (player.active && !player.allIn) return next;
+          }
+          return null;
+        }
+
+        blindIndices() {
+          const activeSeats = this.activeSeatIndices();
+          if (activeSeats.length === 2)
+            return [this.dealer, this.nextActiveIndex(this.dealer)];
+          const small = this.nextActiveIndex(this.dealer);
+          return [small, this.nextActiveIndex(small)];
+        }
+
+        isLikelyBluff(player) {
+          if (player.isHuman || this.board.length < 3) return false;
+          return this.bot.strength(player.hole, this.board, this.stage) < 0.35;
+        }
+      }
+
+      function* combinations(items, size, start = 0, prefix = []) {
+        if (prefix.length === size) {
+          yield prefix;
+          return;
+        }
+        for (
+          let i = start;
+          i <= items.length - (size - prefix.length);
+          i += 1
+        ) {
+          yield* combinations(items, size, i + 1, [...prefix, items[i]]);
+        }
+      }
+
+      function straightHighCard(ranks) {
+        const unique = [...new Set(ranks)].sort((a, b) => b - a);
+        if (unique.includes(14)) unique.push(1);
+        for (let i = 0; i <= unique.length - 5; i += 1) {
+          const window = unique.slice(i, i + 5);
+          if (window[0] - window[4] === 4 && new Set(window).size === 5)
+            return window[0];
+        }
+        return null;
+      }
+
+      function parseAmount(raw) {
+        const amount = Number.parseInt(raw, 10);
+        if (
+          !Number.isInteger(amount) ||
+          String(amount) !== raw ||
+          amount <= 0
+        ) {
+          throw new Error("金额必须是大于 0 的整数");
+        }
+        return amount;
+      }
+
+      function formatCards(cards) {
+        return cards.length ? cards.map((card) => card.text()).join(" ") : "无";
+      }
+
+      const UI_TEXT = {
+        title: "poker",
+        subtitle: "单文件 HTML 版，手机浏览器直接打开即可运行。",
+        setupLabel: "游戏配置",
+        playerCount: "总人数",
+        initialStack: "初始筹码",
+        smallBlind: "小盲注",
+        bigBlind: "大盲注",
+        difficulty: "AI 难度",
+        easy: "简单",
+        normal: "普通",
+        hard: "困难",
+        underwaterMode: "水下模式",
+        enabled: "开启",
+        startGame: "开始游戏",
+        gameArea: "游戏区",
+        ready: "设置参数后点击“开始游戏”。",
+        controls: "操作面板",
+        waiting: "等待开始",
+        commandPlaceholder: "输入 f / c / b 50 / r 120 / q",
+        send: "发送",
+        fold: "弃牌",
+        checkCall: "过牌/跟注",
+        allIn: "全下",
+        status: "状态",
+        enter: "回车",
+        quit: "退出",
+        bet: "下注",
+        raise: "加注",
+        hint: "可直接点按钮，也可以手动输入中文命令或快捷命令。下一手提示出现时，点“回车”继续。",
+        restartConfirm: "当前牌局还在进行，确定重新开始吗？",
+        preparing: "准备发牌...",
+        restart: "重新开始",
+        errorPrefix: "发生错误：",
+        ended: "游戏已结束，可重新开始",
+        processing: "处理中...",
+      };
+
+      class BrowserPokerApp {
+        constructor() {
+          this.outputEl = document.getElementById("output");
+          this.consoleEl = document.getElementById("console");
+          this.promptEl = document.getElementById("prompt");
+          this.amountInput = document.getElementById("amountInput");
+          this.startBtn = document.getElementById("startBtn");
+          this.setupPanel = document.getElementById("setupPanel");
+          this.setupSummary = document.getElementById("setupSummary");
+          this.gameShell = document.getElementById("gameShell");
+          this.handLabel = document.getElementById("handLabel");
+          this.streetLabel = document.getElementById("streetLabel");
+          this.positionLabel = document.getElementById("positionLabel");
+          this.potValue = document.getElementById("potValue");
+          this.currentBetValue = document.getElementById("currentBetValue");
+          this.toCallValue = document.getElementById("toCallValue");
+          this.boardCards = document.getElementById("boardCards");
+          this.heroCards = document.getElementById("heroCards");
+          this.playersList = document.getElementById("playersList");
+          this.reviewPanel = document.getElementById("reviewPanel");
+          this.reviewBoardCards = document.getElementById("reviewBoardCards");
+          this.reviewList = document.getElementById("reviewList");
+          this.recentActions = document.getElementById("recentActions");
+          this.actionFocus = document.getElementById("actionFocus");
+          this.actionCallBtn = document.getElementById("actionCallBtn");
+          this.pendingResolve = null;
+          this.engine = null;
+          this.running = false;
+          this.lastPrompt = "";
+          this.bindEvents();
+          this.renderGameView();
+        }
+
+        bindEvents() {
+          document
+            .getElementById("setupForm")
+            .addEventListener("submit", (event) => {
+              event.preventDefault();
+              this.start();
+            });
+
+          document.querySelectorAll("[data-command]").forEach((button) => {
+            button.addEventListener("click", () =>
+              this.submit(button.dataset.command),
+            );
+          });
+
+          document.getElementById("betBtn").addEventListener("click", () => {
+            this.submit("b " + this.amountInput.value);
+          });
+
+          document.getElementById("raiseBtn").addEventListener("click", () => {
+            this.submit("r " + this.amountInput.value);
+          });
+
+          document
+            .querySelectorAll("#setupForm input, #setupForm select")
+            .forEach((control) => {
+              control.addEventListener("input", () =>
+                this.updateSetupSummary(),
+              );
+              control.addEventListener("change", () =>
+                this.updateSetupSummary(),
+              );
+            });
+        }
+
+        getConfig() {
+          const playerCount = this.readInt("playerCount", 6, 2, 9);
+          const initialStack = this.readInt("initialStack", 1000, 1);
+          const smallBlind = this.readInt("smallBlind", 5, 1);
+          const bigBlind = this.readInt(
+            "bigBlind",
+            Math.max(10, smallBlind * 2),
+            smallBlind + 1,
+          );
+          return {
+            playerCount,
+            initialStack,
+            smallBlind,
+            bigBlind,
+            underwater: document.getElementById("underwater").checked,
+            difficulty: document.getElementById("difficulty").value,
+          };
+        }
+
+        updateSetupSummary(config = this.getConfig()) {
+          this.setupSummary.textContent = `${config.playerCount}人 / ${config.initialStack} / 盲注 ${config.smallBlind}-${config.bigBlind} / ${config.difficulty} / 水下${config.underwater ? "开" : "关"}`;
+        }
+
+        renderGameView() {
+          this.updateSetupSummary();
+          document.body.classList.toggle(
+            "playing",
+            this.running || Boolean(this.engine),
+          );
+
+          if (!this.engine) {
+            this.handLabel.textContent = "未开始";
+            this.streetLabel.textContent = "等待发牌";
+            this.positionLabel.textContent = "-";
+            this.potValue.textContent = "0";
+            this.currentBetValue.textContent = "0";
+            this.toCallValue.textContent = "0";
+            this.boardCards.innerHTML = this.renderEmptyCards(5);
+            this.heroCards.innerHTML = this.renderEmptyCards(2);
+            this.playersList.innerHTML = `<div class="player-row"><div class="player-main"><div class="player-name"><span>设置后开始</span></div><div class="player-meta">手机端会显示牌桌、玩家和行动按钮</div></div><div class="player-stack">-</div></div>`;
+            this.reviewPanel.hidden = true;
+            this.reviewBoardCards.innerHTML = "";
+            this.reviewList.innerHTML = "";
+            this.actionFocus.textContent = "暂无行动";
+            this.recentActions.textContent = "暂无";
+            this.updateActionControls(false);
+            return;
+          }
+
+          const human = this.engine.players[0];
+          const toCall = Math.max(0, this.engine.currentBet - human.currentBet);
+          this.handLabel.textContent = this.engine.handNo
+            ? `第 ${this.engine.handNo} 手`
+            : "准备中";
+          this.streetLabel.textContent = this.engine.stage || "等待发牌";
+          this.positionLabel.textContent = this.safePositionLabel(0);
+          this.potValue.textContent = String(this.engine.pot);
+          this.currentBetValue.textContent = String(this.engine.currentBet);
+          this.toCallValue.textContent = String(toCall);
+          this.boardCards.innerHTML = this.renderCards(this.engine.board, 5);
+          this.heroCards.innerHTML = this.renderCards(human.hole, 2);
+          this.playersList.innerHTML = this.engine.players
+            .map((player, idx) => this.renderPlayer(player, idx))
+            .join("");
+          this.renderReviewPanel();
+          this.actionFocus.textContent = this.renderActionFocus();
+          this.recentActions.innerHTML = this.renderRecentActions();
+          this.updateActionControls(Boolean(this.pendingResolve));
+        }
+
+        safePositionLabel(idx) {
+          try {
+            return this.engine.positionLabel(idx);
+          } catch {
+            return "-";
+          }
+        }
+
+        renderCards(cards, slots) {
+          const rendered = cards.map((card) => this.renderCard(card)).join("");
+          return (
+            rendered + this.renderEmptyCards(Math.max(0, slots - cards.length))
+          );
+        }
+
+        renderEmptyCards(count) {
+          return Array.from(
+            { length: count },
+            () => `<div class="card empty">--</div>`,
+          ).join("");
+        }
+
+        renderCard(card) {
+          const suits = { S: "♠", H: "♥", D: "♦", C: "♣" };
+          const red = card.suit === "H" || card.suit === "D" ? " red" : "";
+          return `<div class="card${red}"><span class="rank">${RANK_NAMES[card.rank]}</span><span class="suit">${suits[card.suit]}</span></div>`;
+        }
+
+        renderPlayer(player, idx) {
+          const isTurn =
+            idx === this.engine.actionIndex && player.active && !player.allIn;
+          const badges = [
+            this.engine.seatMark(idx),
+            this.safePositionLabel(idx),
+          ]
+            .filter(Boolean)
+            .map((item) => `<span class="badge">${item}</span>`)
+            .join("");
+          const status = this.engine.playerStatus(player, idx);
+          const actionType = this.actionType(status);
+          return `
+      <div class="player-row${isTurn ? " active-turn" : ""}">
+        <div class="player-main">
+          <div class="player-name"><span>${player.name}</span>${badges}</div>
+          <div class="player-meta">
+            <span class="action-pill ${actionType}">${status}</span>
+            <span class="round-pill">本轮 ${player.currentBet}</span>
+          </div>
+        </div>
+        <div class="player-stack">${player.stack}</div>
+      </div>
+    `;
+        }
+
+        renderReviewPanel() {
+          const showReview = this.engine.stage === Stage.SHOWDOWN;
+          this.reviewPanel.hidden = !showReview;
+          if (!showReview) {
+            this.reviewBoardCards.innerHTML = "";
+            this.reviewList.innerHTML = "";
+            return;
+          }
+
+          const fullBoard = this.reviewBoard();
+          const scores = this.reviewScores(fullBoard);
+          const winners = this.reviewWinnerIndexes(scores);
+          this.reviewBoardCards.innerHTML = this.renderCards(fullBoard, 5);
+          this.reviewList.innerHTML = this.engine.players
+            .map((player, idx) =>
+              this.renderReviewPlayer(player, idx, scores.get(idx), winners),
+            )
+            .join("");
+        }
+
+        reviewBoard() {
+          const missing = Math.max(0, 5 - this.engine.board.length);
+          return [...this.engine.board, ...this.engine.deck.cards.slice(0, missing)];
+        }
+
+        reviewScores(fullBoard) {
+          const scores = new Map();
+          for (const [idx, player] of this.engine.players.entries()) {
+            if (player.hole.length === 2 && fullBoard.length >= 5) {
+              scores.set(idx, HandEvaluator.best([...player.hole, ...fullBoard]));
+            }
+          }
+          return scores;
+        }
+
+        reviewWinnerIndexes(scores) {
+          const active = this.engine.players
+            .map((player, idx) => ({ player, idx }))
+            .filter(({ player }) => player.active && player.hole.length === 2);
+          if (active.length === 1) return new Set([active[0].idx]);
+          if (!active.length) return new Set();
+          const scoredActive = active.filter(({ idx }) => scores.has(idx));
+          if (!scoredActive.length) return new Set();
+          let best = scoredActive[0];
+          for (const item of scoredActive.slice(1)) {
+            if (scores.get(item.idx).compare(scores.get(best.idx)) > 0) best = item;
+          }
+          return new Set(
+            scoredActive
+              .filter((item) => scores.get(item.idx).compare(scores.get(best.idx)) === 0)
+              .map(({ idx }) => idx),
+          );
+        }
+
+        renderReviewPlayer(player, idx, score, winners) {
+          const isWinner = winners.has(idx);
+          const status = player.folded ? "已弃牌" : player.eliminated ? "已淘汰" : "摊牌";
+          return `
+            <div class="review-row${isWinner ? " winner" : ""}">
+              <div class="review-main">
+                <div class="review-name">
+                  <span>${player.name}</span>
+                  <span class="badge">${this.safePositionLabel(idx)}</span>
+                  ${isWinner ? '<span class="badge">赢家</span>' : ""}
+                </div>
+                <div class="review-hand">${this.renderCards(player.hole, 2)}</div>
+              </div>
+              <div class="review-result">${status}<br>${score ? score.name() : "-"}</div>
+            </div>
+          `;
+        }
+
+        actionType(text) {
+          if (/弃牌|已弃/.test(text)) return "fold";
+          if (/加注/.test(text)) return "raise";
+          if (/下注/.test(text)) return "bet";
+          if (/全下/.test(text)) return "allin";
+          if (/跟注/.test(text)) return "call";
+          if (/过牌/.test(text)) return "check";
+          if (/行动中/.test(text)) return "active";
+          return "wait";
+        }
+
+        renderActionFocus() {
+          if (!this.engine.logs.length) return "等待本轮行动";
+          const important = [...this.engine.logs]
+            .reverse()
+            .find((log) => /下注|加注|跟注|弃牌|全下|过牌/.test(log));
+          return important || this.engine.logs[this.engine.logs.length - 1];
+        }
+
+        renderRecentActions() {
+          const logs = this.engine.logs.slice(-4);
+          if (!logs.length) return "暂无";
+          return logs
+            .map(
+              (log) =>
+                `<span class="log-chip ${this.actionType(log)}">${log}</span>`,
+            )
+            .join("");
+        }
+
+        updateActionControls(waitingForInput) {
+          const human = this.engine?.players[0];
+          const toCall = human
+            ? Math.max(0, this.engine.currentBet - human.currentBet)
+            : 0;
+          const waitingContinue = /继续下一手|按回车/.test(this.lastPrompt);
+          const inAction = waitingForInput && !waitingContinue;
+          const continueButton = document.querySelector('[data-command=""]');
+          const foldButton = document.querySelector('[data-command="f"]');
+          const allInButton = document.querySelector('[data-command="a"]');
+          const quitButton = document.querySelector('[data-command="q"]');
+
+          this.actionCallBtn.textContent =
+            toCall > 0 ? `跟注 ${toCall}` : "过牌";
+          this.actionCallBtn.disabled = !inAction;
+          foldButton.disabled = !inAction;
+          allInButton.disabled = !inAction;
+          continueButton.disabled = !waitingForInput || !waitingContinue;
+          continueButton.textContent = waitingContinue ? "继续" : "确认";
+          quitButton.disabled = !waitingForInput && !this.running;
+          this.amountInput.disabled = !inAction;
+          document.getElementById("betBtn").disabled = !inAction || toCall > 0;
+          document.getElementById("raiseBtn").disabled =
+            !inAction || toCall === 0;
+        }
+
+        readInt(id, fallback, min, max = Infinity) {
+          const element = document.getElementById(id);
+          const value = Number.parseInt(element.value, 10);
+          if (!Number.isInteger(value)) return fallback;
+          return Math.min(Math.max(value, min), max);
+        }
+
+        setControlsEnabled(enabled) {
+          this.amountInput.disabled = !enabled;
+          document
+            .querySelectorAll("[data-command], #betBtn, #raiseBtn")
+            .forEach((control) => {
+              control.disabled = !enabled;
+            });
+        }
+
+        async start() {
+          if (this.running) {
+            const shouldRestart = window.confirm(UI_TEXT.restartConfirm);
+            if (!shouldRestart) return;
+            if (this.pendingResolve) this.pendingResolve("q");
+            this.pendingResolve = null;
+          }
+
+          const config = this.getConfig();
+          this.updateSetupSummary(config);
+          this.setupPanel.open = false;
+          this.outputEl.textContent = "";
+          this.promptEl.textContent = UI_TEXT.preparing;
+          this.setControlsEnabled(true);
+          this.startBtn.textContent = UI_TEXT.restart;
+          this.running = true;
+
+          this.engine = new GameEngine(config, {
+            readInput: (prompt) => this.ask(prompt),
+            writeOutput: (text) => this.write(text),
+          });
+          this.renderGameView();
+
+          try {
+            await this.engine.run();
+          } catch (error) {
+            this.write(
+              "\n" +
+                UI_TEXT.errorPrefix +
+                (error && error.message ? error.message : String(error)),
+            );
+          } finally {
+            this.running = false;
+            this.pendingResolve = null;
+            this.promptEl.textContent = UI_TEXT.ended;
+            this.setControlsEnabled(false);
+            this.startBtn.textContent = UI_TEXT.startGame;
+            this.renderGameView();
+          }
+        }
+
+        ask(prompt) {
+          this.lastPrompt = prompt || "";
+          this.promptEl.textContent = this.displayPrompt(prompt);
+          return new Promise((resolve) => {
+            this.pendingResolve = resolve;
+            this.renderGameView();
+          });
+        }
+
+        submit(raw) {
+          if (!this.pendingResolve) return;
+          const value = String(raw ?? "");
+          this.write(`> ${value || "继续"}`);
+          const resolve = this.pendingResolve;
+          this.pendingResolve = null;
+          this.promptEl.textContent = UI_TEXT.processing;
+          this.renderGameView();
+          resolve(value);
+        }
+
+        write(text) {
+          const prefix = this.outputEl.textContent ? "\n" : "";
+          this.outputEl.textContent += prefix + String(text);
+          this.consoleEl.scrollTop = this.consoleEl.scrollHeight;
+          this.renderGameView();
+        }
+
+        displayPrompt(prompt = "") {
+          if (/继续下一手/.test(prompt)) return "本手结束";
+          if (/按回车进入/.test(prompt)) return "进入下一轮";
+          if (this.running) return "轮到你行动";
+          return "等待开始";
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        window.pokerApp = new BrowserPokerApp();
+      });
+    </script>
+  </body>
+</html>

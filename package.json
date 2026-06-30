@@ -1,0 +1,10 @@
+{
+  "name": "pokerface",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node poker.js",
+    "test": "node --test"
+  }
+}
