@@ -7,5 +7,8 @@
     "start": "node poker.js",
     "build-html": "node scripts/build-html.js",
     "test": "node --test"
+  },
+  "dependencies": {
+    "iconv-lite": "^0.7.2"
   }
 }
