@@ -26,6 +26,41 @@ node poker.js
 
 ## 命令行联机版
 
+Pokerface 现在有两种联机方式：
+
+- 正式客户端模式：服务端运行 `server`，房主/玩家运行本仓库里的 `create` / `join` 客户端。适合开发和完整协议测试。
+- 纯终端模式：服务端运行 `telnet`，朋友只用系统终端里的 `nc` 或 `telnet` 连接，不需要拉代码。
+
+如果朋友完全不想拉 Git 代码，使用“纯终端模式”。
+
+## 纯终端模式，朋友不需要代码
+
+服务器上启动：
+
+```bash
+node poker.js telnet --host 0.0.0.0 --port 8787
+```
+
+第一个连接进来的人会成为房主，并在连接里设置座位数、筹码、盲注、水下模式和 AI 难度。
+
+朋友连接：
+
+```bash
+nc 服务器IP 8787
+```
+
+Windows 没有 `nc` 时可用：
+
+```bash
+telnet 服务器IP 8787
+```
+
+进入后输入昵称，再用 `sit 2` 入座。房主可以用 `bot add 3 AI-1 普通` 添加 AI，用 `start` 开始。
+
+注意：`node poker.js create 服务器IP:8787` 不能连接纯终端模式。`create/join` 是 JSON 客户端，只能连接 `node poker.js server` 启动的 JSON 服务。
+
+## 正式客户端模式，需要玩家有 poker.js
+
 ### 启动服务端
 
 在个人服务器上运行：

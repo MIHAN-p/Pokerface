@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const net = require("node:net");
 const {
   Action,
   ActionKind,
@@ -11,6 +12,7 @@ const {
   InputParser,
   OnlineGameEngine,
   RoomManager,
+  TelnetPokerServer,
   Random,
   Stage,
 } = require("./poker");
@@ -355,4 +357,46 @@ test("room manager creates a host room, enforces host bot permissions, and recon
 
   assert.equal(room.seats[1].connected, true);
   assert.equal(room.seats[1].sessionId, "guest-session");
+});
+
+test("telnet server creates a room through plain terminal input", async () => {
+  const server = new TelnetPokerServer({ host: "127.0.0.1", port: 0 });
+  const originalLog = console.log;
+  console.log = () => {};
+  let text;
+  try {
+    await server.listen();
+    const port = server.server.address().port;
+
+    text = await new Promise((resolve, reject) => {
+      const socket = net.createConnection({ host: "127.0.0.1", port });
+      let output = "";
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        reject(new Error("telnet smoke test timed out"));
+      }, 5000);
+      socket.on("data", (chunk) => {
+        output += chunk.toString("utf8");
+        if (output.includes("房间已创建")) {
+          clearTimeout(timeout);
+          socket.end("q\n");
+          resolve(output);
+        }
+      });
+      socket.on("connect", () => {
+        socket.write("\n\n\n\n\n\n\n\n");
+      });
+      socket.on("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+  } finally {
+    console.log = originalLog;
+    await server.close();
+  }
+
+  assert.match(text, /Pokerface 纯终端联机桌/);
+  assert.match(text, /房间已创建/);
+  assert.match(text, /朋友连接命令：nc 服务器IP \d+/);
 });
