@@ -1647,7 +1647,7 @@ class PokerServer {
 }
 
 class TelnetPokerServer {
-  constructor({ host = "0.0.0.0", port = 80 } = {}) {
+  constructor({ host = "0.0.0.0", port = 8787 } = {}) {
     this.host = host;
     this.port = port;
     this.adminToken = randomCode(8);
@@ -1679,7 +1679,7 @@ class TelnetPokerServer {
 
   handleSocket(socket) {
     socket._pokerfaceTextClient = true;
-    socket.write(Buffer.from([255, 251, 1, 255, 251, 3]));
+    socket.write(Buffer.from([255, 252, 1, 255, 251, 3]));
     socket.write("欢迎来到 Pokerface 纯终端联机桌。\r\n");
     socket.write("本模式支持 nc/telnet，朋友不需要拉代码。\r\n\r\n");
 
@@ -1714,11 +1714,14 @@ class TelnetPokerServer {
   handleData(state, chunk) {
     const text = decodeTelnetInput(chunk);
     if (!text) return;
-    state.socket.write(text.replace(/\n/g, "\r\n"));
     state.buffer += text.replace(/\r/g, "");
     const lines = state.buffer.split("\n");
     state.buffer = lines.pop();
-    for (const line of lines) this.handleLine(state, line.trim());
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) state.socket.write(`${trimmed}\r\n`);
+      this.handleLine(state, trimmed);
+    }
   }
 
   handleLine(state, text) {
@@ -1752,7 +1755,7 @@ class TelnetPokerServer {
           return;
         }
         if (["q", "退出", "quit"].includes(text.toLowerCase())) {
-          state.socket.end("已断开。\r\n");
+          state.socket.end("Disconnected.\r\n");
           return;
         }
         const message = parseOnlineClientCommand(text);
@@ -1900,7 +1903,7 @@ class CliClient {
       }
     });
     this.socket.on("close", () => {
-      console.log("\n服务器已断开。");
+      console.log("\nDisconnected.");
       this.rl?.close();
       this.localServer?.close();
     });
@@ -2160,34 +2163,47 @@ async function askRoomConfig(rl) {
 
 function renderOnlineSnapshot(snapshot) {
   const { room, you, game } = snapshot;
-  const divider = "=".repeat(72);
-  const section = "-".repeat(72);
+  const divider = "=".repeat(56);
+  const section = "-".repeat(56);
   const roomStatus = game?.handFinished ? "手牌结束" : room.status === "waiting" ? "等待中" : "牌局中";
-  const lines = ["", divider, `房间 ${room.roomCode} | ${roomStatus}`];
-  lines.push(
-    `配置：${room.config.playerCount} 人桌 | 初始筹码 ${room.config.initialStack} | 盲注 ${room.config.smallBlind}/${room.config.bigBlind} | 水下：${room.config.underwater ? "开" : "关"} | 超时：${room.config.actionTimeoutSeconds} 秒`,
-  );
+  const lines = ["", divider, `房间：${room.roomCode}`, `状态：${roomStatus}`];
+  lines.push(`配置：${room.config.playerCount} 人桌`);
+  lines.push(`筹码：${room.config.initialStack}`);
+  lines.push(`盲注：${room.config.smallBlind}/${room.config.bigBlind}`);
+  lines.push(`水下：${room.config.underwater ? "开" : "关"}`);
+  lines.push(`超时：${room.config.actionTimeoutSeconds} 秒`);
   lines.push(section, "座位：");
   for (const seat of room.seats) {
     if (seat.type === "empty") {
-      lines.push(`${seat.index}. 空`);
+      lines.push(`座 ${seat.index}：空`);
       continue;
     }
     const host = seat.isHost ? "（房主）" : "";
     const youLabel = seat.isYou ? "（你）" : "";
     const type = seat.type === "bot" ? `AI ${seat.botDifficulty}` : "真人";
     const online = seat.type === "bot" ? "在线" : seat.connected ? "在线" : "离线";
-    lines.push(`${seat.index}. ${seat.displayName}${youLabel}${host}  ${type}  ${online}  筹码 ${seat.stack}`);
+    lines.push(`座 ${seat.index}：${seat.displayName}${youLabel}${host}`);
+    lines.push(`  类型：${type} | ${online} | 筹码 ${seat.stack}`);
   }
   if (!game) {
-    lines.push(
-      section,
-      you?.isHost ? "房主命令：开始/start，添加AI/bot add [座位] [名称] [难度]，移除AI/bot remove 座位，设置AI/bot config 座位 名称 难度" : "玩家命令：入座 位置/sit 位置，离座/leave，刷新/s，退出/q",
-      divider,
-    );
+    lines.push(section);
+    if (you?.isHost) {
+      lines.push("房主命令：");
+      lines.push("  start");
+      lines.push("  bot add [座位] [名称] [难度]");
+      lines.push("  bot remove 座位");
+      lines.push("  bot config 座位 名称 难度");
+    } else {
+      lines.push("玩家命令：");
+      lines.push("  sit 位置");
+      lines.push("  leave");
+      lines.push("  s");
+      lines.push("  q");
+    }
+    lines.push(divider);
     return lines.join("\n");
   }
-  lines.push(section, `第 ${game.handNo} 手 | ${game.stage} | 轮到：${game.actionPlayerName ?? "无"}`);
+  lines.push(section, `第 ${game.handNo} 手`, `阶段：${game.stage}`, `轮到：${game.actionPlayerName ?? "无"}`);
   lines.push(`公共牌：${formatCardDtos(game.board)}`);
   const hero = game.players.find((player) => player.seatIndex === you?.seatIndex);
   if (hero?.hole) lines.push(`你的手牌：${formatCardDtos(hero.hole)}`);
@@ -2195,14 +2211,24 @@ function renderOnlineSnapshot(snapshot) {
   lines.push(section, "牌桌：");
   for (const player of game.players) {
     const hole = player.hole && (player.seatIndex === you?.seatIndex || game.lastHandResult?.revealed?.[player.seatIndex]) ? ` 手牌 ${formatCardDtos(player.hole)}` : "";
-    lines.push(`${player.marks.padEnd(2, " ")} ${String(player.position).padEnd(5, " ")} 座${player.seatIndex} ${player.name} 筹码 ${player.stack} 本轮 ${player.currentBet} ${player.status}${hole}${player.handName ? ` ${player.handName}` : ""}`);
+    const mark = player.marks ? ` | ${player.marks}` : "";
+    const hand = hole ? ` |${hole}` : "";
+    const handName = player.handName ? ` | ${player.handName}` : "";
+    lines.push(`座 ${player.seatIndex}：${player.name}${mark}`);
+    lines.push(`  位置：${player.position || "-"}`);
+    lines.push(`  筹码：${player.stack} | 本轮：${player.currentBet}`);
+    lines.push(`  状态：${player.status}${hand}${handName}`);
   }
   lines.push(section, "最近行动：", ...(game.logs.length ? game.logs : ["无"]));
   if (game.handFinished) {
     lines.push(section, `本手结束：${game.lastHandResult?.summary ?? ""}`);
     lines.push(you?.isHost ? "房间仍在。输入 下一手/next 开始下一手。" : "房间仍在，等待房主开始下一手。");
   } else if (game.actionSeatIndex === you?.seatIndex) {
-    lines.push(section, `请输入：${game.legalActions.map((action) => action.label).join("，")}，状态/s，退出/q`);
+    lines.push(section, "轮到你行动。可输入：");
+    if (hero?.hole) lines.push(`你的手牌：${formatCardDtos(hero.hole)}`);
+    for (const action of game.legalActions) lines.push(`  ${action.label}`);
+    lines.push("  状态/s");
+    lines.push("  退出/q");
   } else {
     lines.push(section, `等待 ${game.actionPlayerName} 行动...`);
   }
@@ -2211,7 +2237,7 @@ function renderOnlineSnapshot(snapshot) {
 }
 
 function formatCardDtos(cards) {
-  return cards?.length ? cards.map((card) => card.text).join(" ") : "无";
+  return cards?.length ? cards.map((card) => `${RANK_NAMES[card.rank]}${SUIT_ICONS[card.suit]}${SUIT_NAMES[card.suit]}`).join(" ") : "无";
 }
 
 function sessionStorePath() {
@@ -2355,7 +2381,7 @@ async function main() {
   if (command === "telnet") {
     const options = parseOptions(args);
     const host = options.host || process.env.HOST || "0.0.0.0";
-    const port = Number.parseInt(options.port || process.env.PORT || "80", 10);
+    const port = Number.parseInt(options.port || process.env.PORT || "8787", 10);
     const server = new TelnetPokerServer({ host, port });
     try {
       await server.listen();
@@ -2396,7 +2422,7 @@ async function main() {
     console.log("  node poker.js server --host 0.0.0.0 --port 3000");
     console.log("  node poker.js create your-server.com:3000");
     console.log("  node poker.js join your-server.com:3000 房间码");
-    console.log("  node poker.js telnet --host 0.0.0.0 --port 80  启动 nc/telnet 纯终端桌");
+    console.log("  node poker.js telnet --host 0.0.0.0 --port 8787  启动 nc/telnet 纯终端桌");
     console.log("  node poker.js host                    本机启动服务端并创建房间");
     return;
   }
@@ -2439,4 +2465,5 @@ module.exports = {
   Random,
   Stage,
   formatCards,
+  renderOnlineSnapshot,
 };

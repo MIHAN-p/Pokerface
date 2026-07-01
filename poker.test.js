@@ -15,6 +15,7 @@ const {
   TelnetPokerServer,
   Random,
   Stage,
+  renderOnlineSnapshot,
 } = require("./poker");
 
 const c = (rank, suit) => new Card(rank, suit);
@@ -409,6 +410,70 @@ test("timeout fold ends only the current hand and allows next hand", async () =>
   assert.equal(room.engine.players.some((player) => player.seatIndex === otherPlayer.seatIndex), true);
 });
 
+test("online snapshot renders as narrow telnet-friendly lines", () => {
+  const manager = new RoomManager({ adminToken: "TOKEN" });
+  const socket = { write: () => {}, _pokerfaceTextClient: true };
+  const room = manager.createRoom({
+    adminToken: "TOKEN",
+    sessionId: "host-session",
+    displayName: "Host",
+    config: { playerCount: 6, initialStack: 1000, smallBlind: 5, bigBlind: 10 },
+    socket,
+  });
+
+  const rendered = renderOnlineSnapshot(room.snapshotFor("host-session"));
+
+  assert.match(rendered, /房间：\d+/);
+  assert.match(rendered, /座 1：Host/);
+  assert.match(rendered, /类型：真人 \| 在线 \| 筹码 1000/);
+  assert.match(rendered, /房主命令：\n  start\n  bot add/);
+  assert.doesNotMatch(rendered, /房主命令：.*设置AI/);
+  assert.ok(rendered.split("\n").every((line) => line.length <= 56));
+});
+
+test("online action prompt repeats hero hand with suit symbols", () => {
+  const snapshot = {
+    room: {
+      roomCode: "123456",
+      status: "playing",
+      config: { playerCount: 2, initialStack: 1000, smallBlind: 5, bigBlind: 10, underwater: true, actionTimeoutSeconds: 60 },
+      seats: [],
+    },
+    you: { seatIndex: 1, isHost: true },
+    game: {
+      handNo: 1,
+      stage: Stage.PREFLOP,
+      board: [],
+      pot: 15,
+      currentBet: 10,
+      actionSeatIndex: 1,
+      actionPlayerName: "Host",
+      legalActions: [{ label: "弃牌/f" }, { label: "跟注/c" }],
+      logs: [],
+      players: [
+        {
+          seatIndex: 1,
+          name: "Host",
+          marks: "",
+          position: "BB",
+          stack: 990,
+          currentBet: 10,
+          status: "行动中",
+          hole: [
+            { rank: 14, suit: "S" },
+            { rank: 13, suit: "H" },
+          ],
+        },
+      ],
+    },
+  };
+
+  const rendered = renderOnlineSnapshot(snapshot);
+
+  assert.equal((rendered.match(/你的手牌：A♠黑桃 K♥红桃/g) ?? []).length, 2);
+  assert.doesNotMatch(rendered, /\?/);
+});
+
 test("telnet server creates a room through plain terminal input", async () => {
   const server = new TelnetPokerServer({ host: "127.0.0.1", port: 0 });
   const originalLog = console.log;
@@ -434,7 +499,7 @@ test("telnet server creates a room through plain terminal input", async () => {
         }
       });
       socket.on("connect", () => {
-        socket.write("\n\n\n\n\n\n\n\n");
+        socket.write("MIH\n\n\n\n\n\n\n\n");
       });
       socket.on("error", (error) => {
         clearTimeout(timeout);
@@ -447,6 +512,8 @@ test("telnet server creates a room through plain terminal input", async () => {
   }
 
   assert.match(text, /Pokerface 纯终端联机桌/);
+  assert.match(text, /MIH\r?\n/);
+  assert.doesNotMatch(text, /M\r?\nI\r?\nH/);
   assert.match(text, /房间已创建/);
   assert.match(text, /朋友连接命令：nc 服务器IP \d+/);
 });
