@@ -1,8 +1,13 @@
 const readline = require("node:readline/promises");
 const { stdin: input, stdout: output } = require("node:process");
+const net = require("node:net");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const SUITS = ["S", "H", "D", "C"];
 const SUIT_NAMES = { S: "黑桃", H: "红桃", D: "方片", C: "梅花" };
+const SUIT_ICONS = { S: "\u2660", H: "\u2665", D: "\u2666", C: "\u2663" };
 const RANK_NAMES = {
   2: "2",
   3: "3",
@@ -48,7 +53,7 @@ class Card {
   }
 
   text() {
-    return `${RANK_NAMES[this.rank]}${SUIT_NAMES[this.suit]}`;
+    return `${RANK_NAMES[this.rank]}${SUIT_ICONS[this.suit]}${SUIT_NAMES[this.suit]}`;
   }
 }
 
@@ -799,7 +804,7 @@ class GameEngine {
     lines.push("", divider, "最近行动：");
     lines.push(...(this.logs.length ? this.logs.slice(-6) : ["无"]));
     if (this.stage !== Stage.SHOWDOWN) {
-      lines.push("", divider, `请输入：${this.commandPrompt()}`);
+      lines.push("", divider, `你的手牌：${formatCards(human.hole)}`, `请输入：${this.commandPrompt()}`);
     }
     lines.push(divider);
     return lines.join("\n");
@@ -930,6 +935,1004 @@ class GameEngine {
   }
 }
 
+class OnlineGameEngine extends GameEngine {
+  constructor(seats, config = {}, options = {}) {
+    super(
+      {
+        ...config,
+        playerCount: seats.length,
+        pauseBetweenStreets: false,
+      },
+      {
+        rng: options.rng ?? new Random(),
+        writeOutput: () => {},
+      },
+    );
+    this.seatOrder = seats.map((seat) => seat.index);
+    this.players = seats.map((seat) => {
+      const player = new Player(seat.displayName, seat.type === "human", seat.stack ?? this.config.initialStack);
+      player.seatIndex = seat.index;
+      player.botConfig = seat.botConfig ?? null;
+      return player;
+    });
+    this.actionState = null;
+    this.handFinished = false;
+    this.lastHandResult = null;
+  }
+
+  startHand() {
+    this.handNo += 1;
+    this.stage = Stage.PREFLOP;
+    this.board = [];
+    this.pot = 0;
+    this.currentBet = 0;
+    this.minRaise = this.config.bigBlind;
+    this.logs = [];
+    this.deck = new Deck(this.rng);
+    this.deck.shuffle();
+    this.actionState = { acted: new Set() };
+    this.handFinished = false;
+    this.lastHandResult = null;
+
+    for (const player of this.players) {
+      player.eliminated = !this.config.underwater && player.stack <= 0;
+      if (this.config.underwater && player.stack <= 0) this.borrowOneHand(player);
+      player.resetForHand();
+      if (player.eliminated) {
+        player.folded = true;
+        player.lastAction = "已淘汰";
+      }
+    }
+    if (this.activeSeatIndices().length < 2) {
+      throw new Error("至少需要 2 个可参与座位才能开局");
+    }
+    if (this.players[this.dealer].eliminated) this.dealer = this.nextActiveIndex(this.dealer);
+
+    const [smallBlindIdx, bigBlindIdx] = this.blindIndices();
+    this.postBlind(smallBlindIdx, this.config.smallBlind, "小盲");
+    this.postBlind(bigBlindIdx, this.config.bigBlind, "大盲");
+    this.currentBet = this.players[bigBlindIdx].currentBet;
+
+    for (let i = 0; i < 2; i += 1) {
+      for (const player of this.players) {
+        if (!player.eliminated) player.hole.push(...this.deck.deal(1));
+      }
+    }
+
+    this.actionIndex = this.nextActionableIndex(this.nextIndex(bigBlindIdx) - 1);
+    this.advanceBots();
+  }
+
+  applySeatAction(seatIndex, action) {
+    if (this.handFinished) throw new Error("本手已经结束，请由房主开始下一手");
+    const playerIndex = this.players.findIndex((player) => player.seatIndex === seatIndex);
+    if (playerIndex < 0) throw new Error("该座位不在当前牌局中");
+    if (playerIndex !== this.actionIndex) throw new Error("还没有轮到该座位行动");
+    const player = this.players[playerIndex];
+    if (!player.isHuman) throw new Error("AI 座位不能提交真人动作");
+    const normalized = this.normalizeAction(player, action);
+    this.validateAction(player, normalized);
+    const raised = this.applyAction(playerIndex, normalized);
+    this.afterAction(playerIndex, raised);
+    this.advanceBots();
+  }
+
+  advanceBots() {
+    let guard = 0;
+    while (!this.handFinished && this.actionIndex !== null && guard < 200) {
+      guard += 1;
+      const player = this.players[this.actionIndex];
+      if (player.isHuman) return;
+      const difficulty = player.botConfig?.difficulty ?? this.config.difficulty;
+      const proposed = this.normalizeAction(
+        player,
+        this.bot.decide({
+          player,
+          players: this.players,
+          board: this.board,
+          stage: this.stage,
+          pot: this.pot,
+          toCall: this.currentBet - player.currentBet,
+          currentBet: this.currentBet,
+          bigBlind: this.config.bigBlind,
+          difficulty,
+        }),
+      );
+      const action = this.safeBotAction(player, proposed);
+      this.validateAction(player, action);
+      const raised = this.applyAction(this.actionIndex, action);
+      this.afterAction(this.actionIndex, raised);
+    }
+    if (guard >= 200) throw new Error("AI 推进超过安全上限");
+  }
+
+  safeBotAction(player, action) {
+    try {
+      this.validateAction(player, action);
+      return action;
+    } catch {
+      const toCall = this.currentBet - player.currentBet;
+      if (player.stack > 0 && toCall >= player.stack) return new Action(ActionKind.ALL_IN);
+      if (toCall <= 0) return new Action(ActionKind.CHECK_CALL);
+      return new Action(ActionKind.FOLD);
+    }
+  }
+
+  afterAction(playerIndex, raised) {
+    if (this.activeCount() <= 1) {
+      this.finishHand();
+      return;
+    }
+    if (raised) {
+      this.actionState.acted.clear();
+      this.actionState.acted.add(playerIndex);
+    } else {
+      this.actionState.acted.add(playerIndex);
+    }
+    if (this.roundComplete(this.actionState.acted)) {
+      this.advanceStreet();
+      return;
+    }
+    this.actionIndex = this.nextActionableIndex(playerIndex);
+  }
+
+  advanceStreet() {
+    if (this.activeCount() <= 1) {
+      this.finishHand();
+      return;
+    }
+    const needsMoreCards = this.board.length < 5;
+    const everyoneAllIn = this.players.every((player) => !player.active || player.allIn);
+    if (everyoneAllIn) {
+      while (this.board.length < 5) this.dealBoard(this.board.length === 0 ? 3 : 1);
+      this.finishHand();
+      return;
+    }
+    if (this.stage === Stage.PREFLOP) {
+      this.dealBoard(3);
+      this.stage = Stage.FLOP;
+    } else if (this.stage === Stage.FLOP) {
+      this.dealBoard(1);
+      this.stage = Stage.TURN;
+    } else if (this.stage === Stage.TURN) {
+      this.dealBoard(1);
+      this.stage = Stage.RIVER;
+    } else if (this.stage === Stage.RIVER || !needsMoreCards) {
+      this.finishHand();
+      return;
+    }
+    this.resetStreetBets();
+    this.actionState.acted.clear();
+    this.actionIndex = this.nextActionableIndex(this.dealer);
+  }
+
+  finishHand() {
+    this.stage = Stage.SHOWDOWN;
+    this.actionIndex = null;
+    this.handFinished = true;
+    const finalPot = this.pot;
+    const active = this.players.map((player, idx) => ({ player, idx })).filter(({ player }) => player.active);
+
+    if (active.length === 1) {
+      active[0].player.stack += this.pot;
+      this.logs.push(`${active[0].player.name} 赢得底池 ${this.pot}`);
+      this.lastHandResult = {
+        winners: [active[0].player.seatIndex],
+        pot: finalPot,
+        revealed: {},
+        summary: `${active[0].player.name} 获胜，赢得 ${finalPot}`,
+      };
+      this.pot = 0;
+      this.dealer = this.nextActiveIndex(this.dealer);
+      return;
+    }
+
+    const scores = new Map();
+    for (const { player, idx } of active) {
+      scores.set(idx, HandEvaluator.best([...player.hole, ...this.board]));
+    }
+    this.settlePots(scores);
+    const winners = this.bestPlayers(active, scores);
+    const revealed = {};
+    for (const { player, idx } of active) {
+      revealed[player.seatIndex] = {
+        cards: player.hole.map(cardToDto),
+        handName: scores.get(idx).name(),
+      };
+    }
+    this.lastHandResult = {
+      winners: winners.map(({ player }) => player.seatIndex),
+      pot: finalPot,
+      revealed,
+      summary: `${winners.map(({ player }) => player.name).join("、")} 分得底池 ${finalPot}`,
+    };
+    this.pot = 0;
+    this.dealer = this.nextActiveIndex(this.dealer);
+  }
+
+  publicSnapshot(viewerSeatIndex = null) {
+    const actionPlayer = this.actionIndex === null ? null : this.players[this.actionIndex];
+    return {
+      handNo: this.handNo,
+      stage: this.stage,
+      board: this.board.map(cardToDto),
+      pot: this.pot,
+      currentBet: this.currentBet,
+      actionSeatIndex: actionPlayer?.seatIndex ?? null,
+      actionPlayerName: actionPlayer?.name ?? null,
+      logs: this.logs.slice(-8),
+      handFinished: this.handFinished,
+      lastHandResult: this.lastHandResult,
+      players: this.players.map((player, idx) => ({
+        seatIndex: player.seatIndex,
+        name: player.name,
+        type: player.isHuman ? "human" : "bot",
+        stack: player.stack,
+        currentBet: player.currentBet,
+        totalBet: player.totalBet,
+        folded: player.folded,
+        allIn: player.allIn,
+        eliminated: player.eliminated,
+        status: this.playerStatus(player, idx),
+        position: this.positionName(idx),
+        marks: this.seatMark(idx),
+        hole:
+          player.seatIndex === viewerSeatIndex || this.lastHandResult?.revealed?.[player.seatIndex]
+            ? player.hole.map(cardToDto)
+            : null,
+        handName: this.lastHandResult?.revealed?.[player.seatIndex]?.handName ?? null,
+      })),
+      legalActions: viewerSeatIndex === actionPlayer?.seatIndex ? this.legalActions(this.players[this.actionIndex]) : [],
+    };
+  }
+
+  legalActions(player) {
+    const toCall = Math.max(0, this.currentBet - player.currentBet);
+    const actions = [{ kind: ActionKind.FOLD, label: "弃牌/f" }, { kind: ActionKind.ALL_IN, label: "全下/a" }];
+    if (toCall > 0) {
+      actions.push({ kind: ActionKind.CHECK_CALL, label: "跟注/c" });
+      if (player.stack > toCall) actions.push({ kind: ActionKind.RAISE, label: "加注/r 金额" });
+    } else if (this.currentBet > 0) {
+      actions.push({ kind: ActionKind.CHECK_CALL, label: "过牌/c" }, { kind: ActionKind.RAISE, label: "加注/r 金额" });
+    } else {
+      actions.push({ kind: ActionKind.CHECK_CALL, label: "过牌/c" }, { kind: ActionKind.BET, label: "下注/b 金额" });
+    }
+    return actions;
+  }
+}
+
+class PokerRoom {
+  constructor({ roomCode, hostSessionId, config }) {
+    this.roomCode = roomCode;
+    this.hostSessionId = hostSessionId;
+    this.status = "waiting";
+    this.config = normalizeRoomConfig(config);
+    this.seats = Array.from({ length: this.config.playerCount }, (_, index) => ({
+      index: index + 1,
+      type: "empty",
+      displayName: "",
+      sessionId: null,
+      connected: false,
+      reconnectCode: null,
+      stack: this.config.initialStack,
+      botConfig: null,
+    }));
+    this.sessions = new Map();
+    this.clients = new Map();
+    this.engine = null;
+    this.processedActions = new Set();
+    this.actionTimer = null;
+    this.createdAt = new Date();
+    this.updatedAt = new Date();
+  }
+
+  addSession({ sessionId, displayName, isHost, socket }) {
+    const session = this.sessions.get(sessionId) ?? {
+      sessionId,
+      displayName,
+      isHost,
+      seatIndex: null,
+      reconnectCode: randomCode(10),
+      connected: true,
+      lastSeenAt: new Date(),
+    };
+    session.displayName = displayName || session.displayName;
+    session.isHost = session.isHost || isHost;
+    session.connected = true;
+    session.lastSeenAt = new Date();
+    this.sessions.set(sessionId, session);
+    this.clients.set(sessionId, socket);
+    if (session.seatIndex) {
+      const seat = this.getSeat(session.seatIndex);
+      seat.connected = true;
+      seat.sessionId = sessionId;
+      seat.displayName = session.displayName;
+    }
+    return session;
+  }
+
+  disconnectSession(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.connected = false;
+    session.lastSeenAt = new Date();
+    this.clients.delete(sessionId);
+    if (session.seatIndex) {
+      const seat = this.getSeat(session.seatIndex);
+      if (seat?.type === "human") seat.connected = false;
+    }
+  }
+
+  sit(sessionId, seatIndex) {
+    if (this.status !== "waiting") throw new Error("牌局中不能换座");
+    const session = this.requireSession(sessionId);
+    const seat = this.getSeat(seatIndex);
+    if (!seat) throw new Error("座位不存在");
+    if (seat.type !== "empty") throw new Error("该座位已被占用");
+    if (session.seatIndex) this.leaveSeat(sessionId);
+    seat.type = "human";
+    seat.displayName = session.displayName;
+    seat.sessionId = sessionId;
+    seat.connected = true;
+    seat.reconnectCode = session.reconnectCode;
+    seat.stack = seat.stack ?? this.config.initialStack;
+    session.seatIndex = seat.index;
+  }
+
+  leaveSeat(sessionId) {
+    if (this.status !== "waiting") throw new Error("牌局中不能离座");
+    const session = this.requireSession(sessionId);
+    if (!session.seatIndex) return;
+    const seat = this.getSeat(session.seatIndex);
+    Object.assign(seat, {
+      type: "empty",
+      displayName: "",
+      sessionId: null,
+      connected: false,
+      reconnectCode: null,
+      stack: this.config.initialStack,
+      botConfig: null,
+    });
+    session.seatIndex = null;
+  }
+
+  addBot(sessionId, { seatIndex, name, difficulty }) {
+    this.requireHost(sessionId);
+    if (this.status !== "waiting") throw new Error("牌局中不能添加 AI");
+    const seat = seatIndex ? this.getSeat(seatIndex) : this.seats.find((item) => item.type === "empty");
+    if (!seat) throw new Error("没有可用空座位");
+    if (seat.type !== "empty") throw new Error("该座位已被占用");
+    const botNo = this.seats.filter((item) => item.type === "bot").length + 1;
+    seat.type = "bot";
+    seat.displayName = name || `AI-${botNo}`;
+    seat.connected = true;
+    seat.botConfig = { name: seat.displayName, difficulty: normalizeDifficulty(difficulty), style: "稳健" };
+    seat.stack = this.config.initialStack;
+  }
+
+  updateBot(sessionId, { seatIndex, name, difficulty }) {
+    this.requireHost(sessionId);
+    if (this.status !== "waiting") throw new Error("牌局中不能配置 AI");
+    const seat = this.getSeat(seatIndex);
+    if (!seat || seat.type !== "bot") throw new Error("该座位不是 AI");
+    if (name) seat.displayName = name;
+    seat.botConfig = {
+      ...(seat.botConfig ?? {}),
+      name: seat.displayName,
+      difficulty: normalizeDifficulty(difficulty ?? seat.botConfig?.difficulty),
+    };
+  }
+
+  removeBot(sessionId, seatIndex) {
+    this.requireHost(sessionId);
+    if (this.status !== "waiting") throw new Error("牌局中不能移除 AI");
+    const seat = this.getSeat(seatIndex);
+    if (!seat || seat.type !== "bot") throw new Error("该座位不是 AI");
+    Object.assign(seat, {
+      type: "empty",
+      displayName: "",
+      connected: false,
+      botConfig: null,
+      stack: this.config.initialStack,
+    });
+  }
+
+  startGame(sessionId) {
+    this.requireHost(sessionId);
+    const occupied = this.seats.filter((seat) => seat.type !== "empty");
+    if (occupied.length < 2) throw new Error("至少需要 2 个可参与座位才能开局");
+    const offline = occupied.filter((seat) => seat.type === "human" && !seat.connected);
+    if (offline.length) throw new Error(`真人座位离线：${offline.map((seat) => seat.index).join("、")}`);
+    this.engine = new OnlineGameEngine(occupied, this.config);
+    this.engine.startHand();
+    this.status = "playing";
+    this.updatedAt = new Date();
+  }
+
+  nextHand(sessionId) {
+    this.requireHost(sessionId);
+    if (!this.engine?.handFinished) throw new Error("当前手牌尚未结束");
+    this.syncStacksFromEngine();
+    this.engine = new OnlineGameEngine(this.seats.filter((seat) => seat.type !== "empty"), this.config);
+    this.engine.startHand();
+    this.status = "playing";
+    this.processedActions.clear();
+    this.updatedAt = new Date();
+  }
+
+  applyPlayerAction(sessionId, action, clientActionId) {
+    const session = this.requireSession(sessionId);
+    if (!session.seatIndex) throw new Error("请先入座");
+    if (!this.engine) throw new Error("牌局尚未开始");
+    const key = clientActionId ? `${sessionId}:${clientActionId}` : null;
+    if (key && this.processedActions.has(key)) return;
+    this.engine.applySeatAction(session.seatIndex, action);
+    if (key) this.processedActions.add(key);
+    if (this.engine.handFinished) this.syncStacksFromEngine();
+    this.updatedAt = new Date();
+  }
+
+  syncStacksFromEngine() {
+    if (!this.engine) return;
+    for (const player of this.engine.players) {
+      const seat = this.getSeat(player.seatIndex);
+      if (seat) seat.stack = player.stack;
+    }
+  }
+
+  snapshotFor(sessionId) {
+    const session = this.sessions.get(sessionId);
+    const viewerSeatIndex = session?.seatIndex ?? null;
+    return {
+      type: "room_snapshot",
+      room: {
+        roomCode: this.roomCode,
+        status: this.status,
+        config: this.config,
+        seats: this.seats.map((seat) => ({
+          index: seat.index,
+          type: seat.type,
+          displayName: seat.displayName,
+          connected: seat.type === "bot" ? true : seat.connected,
+          stack: seat.stack,
+          isYou: seat.sessionId === sessionId,
+          isHost: seat.sessionId === this.hostSessionId,
+          botDifficulty: seat.type === "bot" ? seat.botConfig?.difficulty ?? this.config.difficulty : null,
+        })),
+      },
+      you: session
+        ? {
+            sessionId: session.sessionId,
+            displayName: session.displayName,
+            isHost: session.isHost,
+            seatIndex: session.seatIndex,
+            reconnectCode: session.reconnectCode,
+          }
+        : null,
+      game: this.engine?.publicSnapshot(viewerSeatIndex) ?? null,
+    };
+  }
+
+  broadcast() {
+    this.scheduleActionTimeout();
+    for (const [sessionId, socket] of this.clients) {
+      sendJson(socket, this.snapshotFor(sessionId));
+    }
+  }
+
+  scheduleActionTimeout() {
+    if (this.actionTimer) {
+      clearTimeout(this.actionTimer);
+      this.actionTimer = null;
+    }
+    if (!this.engine || this.engine.handFinished || this.engine.actionIndex === null) return;
+    const player = this.engine.players[this.engine.actionIndex];
+    if (!player?.isHuman) return;
+    this.actionTimer = setTimeout(() => {
+      try {
+        if (!this.engine || this.engine.handFinished || this.engine.players[this.engine.actionIndex]?.seatIndex !== player.seatIndex) return;
+        this.engine.applySeatAction(player.seatIndex, new Action(ActionKind.FOLD));
+        if (this.engine.handFinished) this.syncStacksFromEngine();
+        this.broadcast();
+      } catch {
+        // 超时兜底不能影响服务端主循环。
+      }
+    }, this.config.actionTimeoutSeconds * 1000);
+    this.actionTimer.unref?.();
+  }
+
+  getSeat(seatIndex) {
+    return this.seats[Number(seatIndex) - 1] ?? null;
+  }
+
+  requireSession(sessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error("会话不存在");
+    return session;
+  }
+
+  requireHost(sessionId) {
+    const session = this.requireSession(sessionId);
+    if (!session.isHost) throw new Error("只有房主可以执行该命令");
+    return session;
+  }
+}
+
+class RoomManager {
+  constructor({ adminToken, allowMultipleRooms = false } = {}) {
+    this.adminToken = adminToken || randomCode(8);
+    this.allowMultipleRooms = allowMultipleRooms;
+    this.rooms = new Map();
+  }
+
+  createRoom({ adminToken, sessionId, displayName, config, socket }) {
+    if (adminToken !== this.adminToken) throw new Error("管理口令错误");
+    if (!this.allowMultipleRooms && this.rooms.size > 0) throw new Error("当前服务端只允许创建一个房间");
+    let roomCode;
+    do {
+      roomCode = String(crypto.randomInt(100000, 1000000));
+    } while (this.rooms.has(roomCode));
+    const room = new PokerRoom({ roomCode, hostSessionId: sessionId, config });
+    room.addSession({ sessionId, displayName, isHost: true, socket });
+    room.sit(sessionId, 1);
+    this.rooms.set(roomCode, room);
+    return room;
+  }
+
+  joinRoom({ roomCode, sessionId, displayName, socket, reconnectCode }) {
+    const room = this.rooms.get(String(roomCode));
+    if (!room) throw new Error("房间不存在或已关闭");
+    const existingSeat = room.seats.find((seat) => seat.reconnectCode && seat.reconnectCode === reconnectCode);
+    const session = room.addSession({
+      sessionId: existingSeat?.sessionId ?? sessionId,
+      displayName: displayName || existingSeat?.displayName,
+      isHost: existingSeat?.sessionId === room.hostSessionId,
+      socket,
+    });
+    if (existingSeat) {
+      existingSeat.sessionId = session.sessionId;
+      existingSeat.connected = true;
+      session.seatIndex = existingSeat.index;
+    }
+    return room;
+  }
+}
+
+class PokerServer {
+  constructor({ host = "0.0.0.0", port = 3000, adminToken, allowMultipleRooms = false } = {}) {
+    this.host = host;
+    this.port = port;
+    this.manager = new RoomManager({ adminToken, allowMultipleRooms });
+    this.server = net.createServer((socket) => this.handleSocket(socket));
+    this.socketRooms = new Map();
+  }
+
+  listen() {
+    return new Promise((resolve, reject) => {
+      this.server.once("error", reject);
+      this.server.listen(this.port, this.host, () => {
+        this.server.off("error", reject);
+        console.log("Pokerface 联机服务已启动");
+        console.log(`地址：${this.host}`);
+        console.log(`端口：${this.port}`);
+        console.log(`管理口令：${this.manager.adminToken}`);
+        console.log("");
+        console.log(`房主创建房间命令：node poker.js create ${this.host === "0.0.0.0" ? "your-server.com" : this.host}:${this.port}`);
+        resolve();
+      });
+    });
+  }
+
+  close() {
+    return new Promise((resolve) => this.server.close(resolve));
+  }
+
+  handleSocket(socket) {
+    socket.setEncoding("utf8");
+    let buffer = "";
+    sendJson(socket, { type: "welcome", protocol: "pokerface-jsonl-v1" });
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          this.handleMessage(socket, JSON.parse(line));
+        } catch (error) {
+          sendJson(socket, { type: "action_error", message: error.message });
+        }
+      }
+    });
+    socket.on("close", () => this.disconnect(socket));
+    socket.on("error", () => this.disconnect(socket));
+  }
+
+  handleMessage(socket, msg) {
+    if (msg.type === "ping") {
+      sendJson(socket, { type: "pong" });
+      return;
+    }
+    if (msg.type === "create_room") {
+      const sessionId = msg.sessionId || randomCode(16);
+      const room = this.manager.createRoom({
+        adminToken: msg.adminToken,
+        sessionId,
+        displayName: msg.displayName || "房主",
+        config: msg.config,
+        socket,
+      });
+      this.socketRooms.set(socket, { roomCode: room.roomCode, sessionId });
+      sendJson(socket, { type: "room_created", roomCode: room.roomCode, sessionId, reconnectCode: room.sessions.get(sessionId).reconnectCode });
+      console.log(`[${new Date().toISOString()}] 房间创建 ${room.roomCode}`);
+      room.broadcast();
+      return;
+    }
+    if (msg.type === "join_room") {
+      const sessionId = msg.sessionId || randomCode(16);
+      const room = this.manager.joinRoom({
+        roomCode: msg.roomCode,
+        sessionId,
+        displayName: msg.displayName || "玩家",
+        socket,
+        reconnectCode: msg.reconnectCode,
+      });
+      const session = [...room.sessions.values()].find((item) => item.sessionId === sessionId || item.reconnectCode === msg.reconnectCode) ?? room.sessions.get(sessionId);
+      this.socketRooms.set(socket, { roomCode: room.roomCode, sessionId: session.sessionId });
+      sendJson(socket, { type: "joined_room", roomCode: room.roomCode, sessionId: session.sessionId, reconnectCode: session.reconnectCode });
+      console.log(`[${new Date().toISOString()}] 玩家连接 房间 ${room.roomCode} ${session.displayName}`);
+      room.broadcast();
+      return;
+    }
+
+    const binding = this.socketRooms.get(socket);
+    if (!binding) throw new Error("请先创建或加入房间");
+    const room = this.manager.rooms.get(binding.roomCode);
+    if (!room) throw new Error("房间不存在或已关闭");
+    const sessionId = binding.sessionId;
+    if (msg.type === "sit_down") room.sit(sessionId, msg.seatIndex);
+    else if (msg.type === "leave_seat") room.leaveSeat(sessionId);
+    else if (msg.type === "add_bot") room.addBot(sessionId, msg);
+    else if (msg.type === "update_bot") room.updateBot(sessionId, msg);
+    else if (msg.type === "remove_bot") room.removeBot(sessionId, msg.seatIndex);
+    else if (msg.type === "start_game") {
+      room.startGame(sessionId);
+      console.log(`[${new Date().toISOString()}] 单手开始 房间 ${room.roomCode}`);
+    } else if (msg.type === "next_hand") {
+      room.nextHand(sessionId);
+      console.log(`[${new Date().toISOString()}] 下一手 房间 ${room.roomCode}`);
+    } else if (msg.type === "player_action") {
+      room.applyPlayerAction(sessionId, actionFromDto(msg.action), msg.clientActionId);
+      if (room.engine?.handFinished) console.log(`[${new Date().toISOString()}] 单手结束 房间 ${room.roomCode}`);
+    } else if (msg.type === "room_snapshot") {
+      sendJson(socket, room.snapshotFor(sessionId));
+      return;
+    } else {
+      throw new Error("未知消息类型");
+    }
+    room.broadcast();
+  }
+
+  disconnect(socket) {
+    const binding = this.socketRooms.get(socket);
+    if (!binding) return;
+    this.socketRooms.delete(socket);
+    const room = this.manager.rooms.get(binding.roomCode);
+    if (!room) return;
+    room.disconnectSession(binding.sessionId);
+    console.log(`[${new Date().toISOString()}] 玩家断开 房间 ${room.roomCode}`);
+    room.broadcast();
+  }
+}
+
+class CliClient {
+  constructor({ endpoint, mode, roomCode, localServer = null }) {
+    this.endpoint = endpoint;
+    this.mode = mode;
+    this.roomCode = roomCode;
+    this.localServer = localServer;
+    this.socket = null;
+    this.rl = null;
+    this.session = loadSession(endpoint, roomCode);
+    this.latestSnapshot = null;
+  }
+
+  async run() {
+    const { host, port } = parseEndpoint(this.endpoint);
+    this.rl = readline.createInterface({ input, output });
+    this.socket = net.createConnection({ host, port });
+    this.socket.setEncoding("utf8");
+    let buffer = "";
+    this.socket.on("data", (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        this.handleServerMessage(JSON.parse(line));
+      }
+    });
+    this.socket.on("close", () => {
+      console.log("\n服务器已断开。");
+      this.rl?.close();
+      this.localServer?.close();
+    });
+    await onceConnect(this.socket);
+    if (this.mode === "create") await this.createRoom();
+    else await this.joinRoom();
+    await this.inputLoop();
+  }
+
+  async createRoom() {
+    const displayName = await this.ask("昵称（默认 房主）：", "房主");
+    const adminToken = this.localServer?.manager.adminToken ?? (await this.ask("管理口令："));
+    const config = await askRoomConfig(this.rl);
+    sendJson(this.socket, {
+      type: "create_room",
+      adminToken,
+      displayName,
+      sessionId: this.session?.sessionId,
+      config,
+    });
+  }
+
+  async joinRoom() {
+    const displayName = await this.ask("昵称（默认 玩家）：", "玩家");
+    sendJson(this.socket, {
+      type: "join_room",
+      roomCode: this.roomCode,
+      displayName,
+      sessionId: this.session?.sessionId,
+      reconnectCode: this.session?.reconnectCode,
+    });
+  }
+
+  async inputLoop() {
+    while (true) {
+      const raw = await this.rl.question("> ");
+      const text = raw.trim();
+      if (!text) continue;
+      try {
+        if (["q", "退出", "quit"].includes(text.toLowerCase())) {
+          this.socket.end();
+          return;
+        }
+        const message = this.parseClientCommand(text);
+        if (message) sendJson(this.socket, message);
+      } catch (error) {
+        console.log(`输入无效：${error.message}`);
+      }
+    }
+  }
+
+  parseClientCommand(text) {
+    const lower = text.toLowerCase();
+    if (["s", "状态", "status"].includes(lower)) return { type: "room_snapshot" };
+    const parts = text.split(/\s+/);
+    if (["入座", "sit"].includes(parts[0])) return { type: "sit_down", seatIndex: parseSeatIndex(parts[1]) };
+    if (["离座", "leave"].includes(parts[0])) return { type: "leave_seat" };
+    if (["开始", "start"].includes(parts[0])) return { type: "start_game" };
+    if (["下一手", "next"].includes(parts[0])) return { type: "next_hand" };
+    if (parts[0] === "bot" && parts[1] === "add") {
+      return { type: "add_bot", seatIndex: parts[2] ? parseSeatIndex(parts[2]) : null, name: parts[3], difficulty: parts[4] };
+    }
+    if (parts[0] === "bot" && parts[1] === "remove") return { type: "remove_bot", seatIndex: parseSeatIndex(parts[2]) };
+    if (parts[0] === "bot" && parts[1] === "config") {
+      return { type: "update_bot", seatIndex: parseSeatIndex(parts[2]), name: parts[3], difficulty: parts[4] };
+    }
+    if (parts[0] === "添加AI") return { type: "add_bot", seatIndex: parts[1] ? parseSeatIndex(parts[1]) : null, name: parts[2], difficulty: parts[3] };
+    if (parts[0] === "移除AI") return { type: "remove_bot", seatIndex: parseSeatIndex(parts[1]) };
+    return {
+      type: "player_action",
+      action: actionToDto(InputParser.parse(text)),
+      clientActionId: randomCode(12),
+    };
+  }
+
+  handleServerMessage(msg) {
+    if (msg.type === "welcome") return;
+    if (msg.type === "action_error") {
+      console.log(`错误：${msg.message}`);
+      return;
+    }
+    if (msg.type === "room_created") {
+      console.log(`房间已创建：${msg.roomCode}`);
+      console.log(`朋友加入命令：node poker.js join ${this.endpoint} ${msg.roomCode}`);
+      saveSession(this.endpoint, msg.roomCode, msg);
+      return;
+    }
+    if (msg.type === "joined_room") {
+      console.log(`已加入房间：${msg.roomCode}`);
+      saveSession(this.endpoint, msg.roomCode, msg);
+      return;
+    }
+    if (msg.type === "room_snapshot") {
+      this.latestSnapshot = msg;
+      console.log(renderOnlineSnapshot(msg));
+    }
+  }
+
+  async ask(prompt, defaultValue = "") {
+    const raw = (await this.rl.question(prompt)).trim();
+    return raw || defaultValue;
+  }
+}
+
+function cardToDto(card) {
+  return { rank: card.rank, suit: card.suit, text: card.text() };
+}
+
+function actionToDto(action) {
+  return { kind: action.kind, amount: action.amount };
+}
+
+function actionFromDto(dto) {
+  if (!dto || !dto.kind) throw new Error("动作格式错误");
+  return new Action(dto.kind, dto.amount ?? null);
+}
+
+function sendJson(socket, payload) {
+  socket.write(`${JSON.stringify(payload)}\n`);
+}
+
+function randomCode(size = 8) {
+  return crypto.randomBytes(size).toString("base64url").slice(0, size);
+}
+
+function normalizeRoomConfig(config = {}) {
+  const playerCount = clampInt(config.playerCount ?? 6, 2, 9);
+  const smallBlind = clampInt(config.smallBlind ?? 5, 1);
+  const bigBlind = clampInt(config.bigBlind ?? Math.max(10, smallBlind * 2), smallBlind + 1);
+  return {
+    playerCount,
+    initialStack: clampInt(config.initialStack ?? 1000, 1),
+    smallBlind,
+    bigBlind,
+    underwater: config.underwater ?? true,
+    difficulty: normalizeDifficulty(config.difficulty),
+    actionTimeoutSeconds: clampInt(config.actionTimeoutSeconds ?? 60, 5),
+  };
+}
+
+function normalizeDifficulty(value) {
+  return ["简单", "普通", "困难"].includes(value) ? value : "普通";
+}
+
+function clampInt(value, min, max = null) {
+  const number = Number.parseInt(value, 10);
+  const safe = Number.isInteger(number) ? number : min;
+  return Math.min(Math.max(safe, min), max ?? safe);
+}
+
+function parseSeatIndex(value) {
+  const seatIndex = Number.parseInt(value, 10);
+  if (!Number.isInteger(seatIndex) || String(seatIndex) !== String(value) || seatIndex < 1 || seatIndex > 9) {
+    throw new Error("座位号必须是 1-9");
+  }
+  return seatIndex;
+}
+
+function parseEndpoint(endpoint) {
+  const [host, rawPort] = String(endpoint || "").split(":");
+  if (!host) throw new Error("服务器地址不能为空");
+  const port = Number.parseInt(rawPort || "3000", 10);
+  if (!Number.isInteger(port) || port <= 0) throw new Error("端口格式错误");
+  return { host, port };
+}
+
+function parseOptions(argv) {
+  const options = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (!arg.startsWith("--")) continue;
+    const key = arg.slice(2);
+    const next = argv[i + 1];
+    if (!next || next.startsWith("--")) options[key] = true;
+    else {
+      options[key] = next;
+      i += 1;
+    }
+  }
+  return options;
+}
+
+function onceConnect(socket) {
+  return new Promise((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("error", reject);
+  });
+}
+
+async function askRoomConfig(rl) {
+  const playerCount = await askInt(rl, "总座位数 2-9", 6, 2, 9);
+  const initialStack = await askInt(rl, "初始筹码", 1000, 1);
+  const smallBlind = await askInt(rl, "小盲注", 5, 1);
+  const bigBlind = await askInt(rl, "大盲注", Math.max(10, smallBlind * 2), smallBlind + 1);
+  const underwater = await askBool(rl, "开启水下模式", true);
+  const actionTimeoutSeconds = await askInt(rl, "行动超时秒数", 60, 5);
+  const difficulty = await askDifficulty(rl);
+  return { playerCount, initialStack, smallBlind, bigBlind, underwater, actionTimeoutSeconds, difficulty };
+}
+
+function renderOnlineSnapshot(snapshot) {
+  const { room, you, game } = snapshot;
+  const lines = ["", `房间 ${room.roomCode} | ${room.status === "waiting" ? "等待中" : "牌局中"}`];
+  lines.push(
+    `配置：${room.config.playerCount} 人桌 | 初始筹码 ${room.config.initialStack} | 盲注 ${room.config.smallBlind}/${room.config.bigBlind} | 水下：${room.config.underwater ? "开" : "关"} | 超时：${room.config.actionTimeoutSeconds} 秒`,
+  );
+  lines.push("", "座位：");
+  for (const seat of room.seats) {
+    if (seat.type === "empty") {
+      lines.push(`${seat.index}. 空`);
+      continue;
+    }
+    const host = seat.isHost ? "（房主）" : "";
+    const youLabel = seat.isYou ? "（你）" : "";
+    const type = seat.type === "bot" ? `AI ${seat.botDifficulty}` : "真人";
+    const online = seat.type === "bot" ? "在线" : seat.connected ? "在线" : "离线";
+    lines.push(`${seat.index}. ${seat.displayName}${youLabel}${host}  ${type}  ${online}  筹码 ${seat.stack}`);
+  }
+  if (!game) {
+    lines.push("", you?.isHost ? "房主命令：开始/start，添加AI/bot add [座位] [名称] [难度]，移除AI/bot remove 座位，设置AI/bot config 座位 名称 难度" : "玩家命令：入座 位置/sit 位置，离座/leave，刷新/s，退出/q");
+    return lines.join("\n");
+  }
+  lines.push("", `第 ${game.handNo} 手 | ${game.stage} | 轮到：${game.actionPlayerName ?? "无"}`);
+  lines.push(`公共牌：${formatCardDtos(game.board)}`);
+  const hero = game.players.find((player) => player.seatIndex === you?.seatIndex);
+  if (hero?.hole) lines.push(`你的手牌：${formatCardDtos(hero.hole)}`);
+  lines.push(`底池：${game.pot}`, `当前最高下注：${game.currentBet}`);
+  lines.push("", "牌桌：");
+  for (const player of game.players) {
+    const hole = player.hole && (player.seatIndex === you?.seatIndex || game.lastHandResult?.revealed?.[player.seatIndex]) ? ` 手牌 ${formatCardDtos(player.hole)}` : "";
+    lines.push(`${player.marks.padEnd(2, " ")} ${String(player.position).padEnd(5, " ")} 座${player.seatIndex} ${player.name} 筹码 ${player.stack} 本轮 ${player.currentBet} ${player.status}${hole}${player.handName ? ` ${player.handName}` : ""}`);
+  }
+  lines.push("", "最近行动：", ...(game.logs.length ? game.logs : ["无"]));
+  if (game.handFinished) {
+    lines.push("", `本手结束：${game.lastHandResult?.summary ?? ""}`);
+    if (you?.isHost) lines.push("输入 下一手/next 开始下一手。");
+  } else if (game.actionSeatIndex === you?.seatIndex) {
+    lines.push("", `请输入：${game.legalActions.map((action) => action.label).join("，")}，状态/s，退出/q`);
+  } else {
+    lines.push("", `等待 ${game.actionPlayerName} 行动...`);
+  }
+  return lines.join("\n");
+}
+
+function formatCardDtos(cards) {
+  return cards?.length ? cards.map((card) => card.text).join(" ") : "无";
+}
+
+function sessionStorePath() {
+  return path.join(process.cwd(), ".pokerface-sessions.json");
+}
+
+function loadSession(endpoint, roomCode) {
+  try {
+    const data = JSON.parse(fs.readFileSync(sessionStorePath(), "utf8"));
+    return data[`${endpoint}|${roomCode ?? "create"}`] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(endpoint, roomCode, session) {
+  try {
+    let data = {};
+    try {
+      data = JSON.parse(fs.readFileSync(sessionStorePath(), "utf8"));
+    } catch {
+      data = {};
+    }
+    data[`${endpoint}|${roomCode}`] = {
+      sessionId: session.sessionId,
+      reconnectCode: session.reconnectCode,
+    };
+    fs.writeFileSync(sessionStorePath(), `${JSON.stringify(data, null, 2)}\n`);
+  } catch {
+    // 会话缓存失败不影响本次游戏。
+  }
+}
+
 function* combinations(items, size, start = 0, prefix = []) {
   if (prefix.length === size) {
     yield prefix;
@@ -1015,6 +2018,60 @@ async function setupConfig(rl) {
 }
 
 async function main() {
+  const [command, ...args] = process.argv.slice(2);
+  if (command === "server") {
+    const options = parseOptions(args);
+    const host = options.host || process.env.HOST || "0.0.0.0";
+    const port = Number.parseInt(options.port || process.env.PORT || "3000", 10);
+    const server = new PokerServer({
+      host,
+      port,
+      adminToken: options.token,
+      allowMultipleRooms: Boolean(options["multi-room"]),
+    });
+    try {
+      await server.listen();
+    } catch (error) {
+      if (error.code === "EADDRINUSE") console.error(`端口已占用：${host}:${port}`);
+      else if (error.code === "EACCES") console.error(`权限不足，无法监听：${host}:${port}`);
+      else if (error.code === "EADDRNOTAVAIL") console.error(`地址不可绑定：${host}`);
+      else console.error(`服务启动失败：${error.message}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (command === "create") {
+    const endpoint = args[0];
+    if (!endpoint) throw new Error("用法：node poker.js create host:port");
+    await new CliClient({ endpoint, mode: "create" }).run();
+    return;
+  }
+  if (command === "join") {
+    const endpoint = args[0];
+    const roomCode = args[1];
+    if (!endpoint || !roomCode) throw new Error("用法：node poker.js join host:port 房间码");
+    await new CliClient({ endpoint, mode: "join", roomCode }).run();
+    return;
+  }
+  if (command === "host") {
+    const options = parseOptions(args);
+    const host = options.host || "127.0.0.1";
+    const port = Number.parseInt(options.port || "3000", 10);
+    const server = new PokerServer({ host, port, adminToken: options.token });
+    await server.listen();
+    await new CliClient({ endpoint: `${host}:${port}`, mode: "create", localServer: server }).run();
+    return;
+  }
+  if (command && ["help", "-h", "--help"].includes(command)) {
+    console.log("用法：");
+    console.log("  node poker.js                         启动单机命令行游戏");
+    console.log("  node poker.js server --host 0.0.0.0 --port 3000");
+    console.log("  node poker.js create your-server.com:3000");
+    console.log("  node poker.js join your-server.com:3000 房间码");
+    console.log("  node poker.js host                    本机启动服务端并创建房间");
+    return;
+  }
+
   const rl = readline.createInterface({ input, output });
   try {
     const config = await setupConfig(rl);
@@ -1045,6 +2102,10 @@ module.exports = {
   HandEvaluator,
   HandScore,
   InputParser,
+  OnlineGameEngine,
+  PokerRoom,
+  PokerServer,
+  RoomManager,
   Random,
   Stage,
   formatCards,

@@ -9,6 +9,8 @@ const {
   HandEvaluator,
   HandScore,
   InputParser,
+  OnlineGameEngine,
+  RoomManager,
   Random,
   Stage,
 } = require("./poker");
@@ -221,10 +223,10 @@ test("hand review shows all hole cards and completed board after folds", () => {
 
   const review = outputs.join("\n");
   assert.match(review, /本手复盘/);
-  assert.match(review, /完整公共牌：10红桃 6方片 4红桃 4方片 3红桃/);
-  assert.match(review, /你\s+未弃牌\s+3方片 A梅花/);
-  assert.match(review, /AI-1\s+已弃牌\s+6红桃 8红桃/);
-  assert.match(review, /AI-2\s+已弃牌\s+J红桃 A黑桃/);
+  assert.match(review, /完整公共牌：10♥红桃 6♦方片 4♥红桃 4♦方片 3♥红桃/);
+  assert.match(review, /你\s+未弃牌\s+3♦方片 A♣梅花/);
+  assert.match(review, /AI-1\s+已弃牌\s+6♥红桃 8♥红桃/);
+  assert.match(review, /AI-2\s+已弃牌\s+J♥红桃 A♠黑桃/);
 });
 
 test("showdown marks winners inline in the player table", () => {
@@ -246,8 +248,8 @@ test("showdown marks winners inline in the player table", () => {
 
   const text = outputs.join("\n");
   assert.doesNotMatch(text, /赢家：/);
-  assert.match(text, /你\(赢家\)\s+A黑桃 K红桃\s+一对/);
-  assert.match(text, /AI-1\s+9黑桃 8红桃\s+一对/);
+  assert.match(text, /你\(赢家\)\s+A♠黑桃 K♥红桃\s+一对/);
+  assert.match(text, /AI-1\s+9♠黑桃 8♥红桃\s+一对/);
 });
 
 test("street pause can carry an entered action into the betting round", async () => {
@@ -287,6 +289,7 @@ test("render state highlights hero position and uses seat table", () => {
   assert.match(state, /第 1 手 \| 翻牌前 \| 你的位置：CO（关煞位）/);
   assert.match(state, /标记\s+位置\s+玩家\s+筹码\s+本轮\s+状态/);
   assert.match(state, /CO\s+你\s+1000\s+0\s+行动中/);
+  assert.match(state, /最近行动：[\s\S]*你的手牌：K♠黑桃 4♠黑桃[\s\S]*请输入：/);
   assert.match(state, /庄\s+BTN\s+AI-1/);
   assert.match(state, /小\s+SB\s+AI-2/);
   assert.match(state, /大\s+BB\s+AI-3/);
@@ -303,4 +306,53 @@ test("position names are still available for strategy", () => {
   assert.equal(engine.positionName(3), "BB");
   assert.equal(engine.positionName(4), "UTG");
   assert.equal(engine.positionName(5), "MP");
+});
+
+test("online snapshots only expose the viewer hole cards before showdown", () => {
+  const engine = new OnlineGameEngine(
+    [
+      { index: 1, type: "human", displayName: "Alice", stack: 1000 },
+      { index: 2, type: "human", displayName: "Bob", stack: 1000 },
+    ],
+    { playerCount: 2, initialStack: 1000, smallBlind: 5, bigBlind: 10 },
+    { rng: new Random(3) },
+  );
+
+  engine.startHand();
+
+  const aliceView = engine.publicSnapshot(1);
+  const bobView = engine.publicSnapshot(2);
+  assert.equal(aliceView.players.find((player) => player.seatIndex === 1).hole.length, 2);
+  assert.equal(aliceView.players.find((player) => player.seatIndex === 2).hole, null);
+  assert.equal(bobView.players.find((player) => player.seatIndex === 1).hole, null);
+  assert.equal(bobView.players.find((player) => player.seatIndex === 2).hole.length, 2);
+  assert.doesNotMatch(JSON.stringify(aliceView), /deck|cards":\[/);
+});
+
+test("room manager creates a host room, enforces host bot permissions, and reconnects a seat", () => {
+  const manager = new RoomManager({ adminToken: "TOKEN" });
+  const socket = { write: () => {} };
+  const room = manager.createRoom({
+    adminToken: "TOKEN",
+    sessionId: "host-session",
+    displayName: "Host",
+    config: { playerCount: 3, initialStack: 500, smallBlind: 5, bigBlind: 10 },
+    socket,
+  });
+
+  assert.equal(room.seats[0].type, "human");
+  assert.equal(room.seats[0].displayName, "Host");
+  assert.throws(() => room.addBot("missing-session", { seatIndex: 2 }), /会话不存在/);
+
+  const guestSocket = { write: () => {} };
+  manager.joinRoom({ roomCode: room.roomCode, sessionId: "guest-session", displayName: "Guest", socket: guestSocket });
+  room.sit("guest-session", 2);
+  const reconnectCode = room.seats[1].reconnectCode;
+  room.disconnectSession("guest-session");
+  assert.equal(room.seats[1].connected, false);
+
+  manager.joinRoom({ roomCode: room.roomCode, sessionId: "new-session", displayName: "Guest", socket: guestSocket, reconnectCode });
+
+  assert.equal(room.seats[1].connected, true);
+  assert.equal(room.seats[1].sessionId, "guest-session");
 });
