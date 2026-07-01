@@ -359,6 +359,56 @@ test("room manager creates a host room, enforces host bot permissions, and recon
   assert.equal(room.seats[1].sessionId, "guest-session");
 });
 
+test("starting a room auto-fills empty seats with bots", () => {
+  const manager = new RoomManager({ adminToken: "TOKEN" });
+  const socket = { write: () => {} };
+  const room = manager.createRoom({
+    adminToken: "TOKEN",
+    sessionId: "host-session",
+    displayName: "Host",
+    config: { playerCount: 4, initialStack: 500, smallBlind: 5, bigBlind: 10, difficulty: "困难" },
+    socket,
+  });
+
+  room.startGame("host-session");
+
+  assert.equal(room.seats.filter((seat) => seat.type === "empty").length, 0);
+  assert.equal(room.seats.filter((seat) => seat.type === "bot").length, 3);
+  assert.equal(room.engine.players.length, 4);
+  assert.equal(room.seats[1].botConfig.difficulty, "困难");
+});
+
+test("timeout fold ends only the current hand and allows next hand", async () => {
+  const manager = new RoomManager({ adminToken: "TOKEN" });
+  const writes = [];
+  const socket = { write: (text) => writes.push(text), _pokerfaceTextClient: true };
+  const room = manager.createRoom({
+    adminToken: "TOKEN",
+    sessionId: "host-session",
+    displayName: "Host",
+    config: { playerCount: 2, initialStack: 500, smallBlind: 5, bigBlind: 10, actionTimeoutSeconds: 5 },
+    socket,
+  });
+  room.startGame("host-session");
+  const hostPlayer = room.engine.players.find((player) => player.seatIndex === 1);
+  const otherPlayer = room.engine.players.find((player) => player.seatIndex !== 1);
+  assert.equal(hostPlayer.isHuman, true);
+
+  room.engine.applySeatAction(hostPlayer.seatIndex, new Action(ActionKind.FOLD));
+  room.syncStacksFromEngine();
+  room.broadcast();
+
+  assert.equal(room.engine.handFinished, true);
+  assert.equal(room.status, "playing");
+  assert.match(writes.join(""), /房间仍在。输入 下一手\/next 开始下一手。/);
+
+  room.nextHand("host-session");
+
+  assert.equal(room.engine.handFinished, false);
+  assert.equal(room.engine.players.length, 2);
+  assert.equal(room.engine.players.some((player) => player.seatIndex === otherPlayer.seatIndex), true);
+});
+
 test("telnet server creates a room through plain terminal input", async () => {
   const server = new TelnetPokerServer({ host: "127.0.0.1", port: 0 });
   const originalLog = console.log;

@@ -38,7 +38,7 @@ Pokerface 现在有两种联机方式：
 服务器上启动：
 
 ```bash
-node poker.js telnet --host 0.0.0.0 --port 8787
+node poker.js telnet --host 0.0.0.0 --port 80
 ```
 
 第一个连接进来的人会成为房主，并在连接里设置座位数、筹码、盲注、水下模式和 AI 难度。
@@ -46,18 +46,20 @@ node poker.js telnet --host 0.0.0.0 --port 8787
 朋友连接：
 
 ```bash
-nc 服务器IP 8787
+nc 服务器IP 80
 ```
 
 Windows 没有 `nc` 时可用：
 
 ```bash
-telnet 服务器IP 8787
+telnet 服务器IP 80
 ```
 
 进入后输入昵称，再用 `sit 2` 入座。房主可以用 `bot add 3 AI-1 普通` 添加 AI，用 `start` 开始。
 
-注意：`node poker.js create 服务器IP:8787` 不能连接纯终端模式。`create/join` 是 JSON 客户端，只能连接 `node poker.js server` 启动的 JSON 服务。
+注意：`node poker.js create 服务器IP:80` 不能连接纯终端模式。`create/join` 是 JSON 客户端，只能连接 `node poker.js server` 启动的 JSON 服务。
+
+Linux 上监听 80 端口可能需要 root 权限，或由平台/反向代理把外部 80 转发到进程端口。
 
 ## 正式客户端模式，需要玩家有 poker.js
 

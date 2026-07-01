@@ -1337,8 +1337,28 @@ class PokerRoom {
     });
   }
 
+  fillEmptySeatsWithBots() {
+    let botNo = this.seats.filter((seat) => seat.type === "bot").length + 1;
+    for (const seat of this.seats) {
+      if (seat.type !== "empty") continue;
+      seat.type = "bot";
+      seat.displayName = `AI-${botNo}`;
+      seat.connected = true;
+      seat.sessionId = null;
+      seat.reconnectCode = null;
+      seat.stack = this.config.initialStack;
+      seat.botConfig = {
+        name: seat.displayName,
+        difficulty: this.config.difficulty,
+        style: "稳健",
+      };
+      botNo += 1;
+    }
+  }
+
   startGame(sessionId) {
     this.requireHost(sessionId);
+    this.fillEmptySeatsWithBots();
     const occupied = this.seats.filter((seat) => seat.type !== "empty");
     if (occupied.length < 2) throw new Error("至少需要 2 个可参与座位才能开局");
     const offline = occupied.filter((seat) => seat.type === "human" && !seat.connected);
@@ -1353,6 +1373,7 @@ class PokerRoom {
     this.requireHost(sessionId);
     if (!this.engine?.handFinished) throw new Error("当前手牌尚未结束");
     this.syncStacksFromEngine();
+    this.fillEmptySeatsWithBots();
     this.engine = new OnlineGameEngine(this.seats.filter((seat) => seat.type !== "empty"), this.config);
     this.engine.startHand();
     this.status = "playing";
@@ -1626,7 +1647,7 @@ class PokerServer {
 }
 
 class TelnetPokerServer {
-  constructor({ host = "0.0.0.0", port = 8787 } = {}) {
+  constructor({ host = "0.0.0.0", port = 80 } = {}) {
     this.host = host;
     this.port = port;
     this.adminToken = randomCode(8);
@@ -1657,8 +1678,8 @@ class TelnetPokerServer {
   }
 
   handleSocket(socket) {
-    socket.setEncoding("utf8");
     socket._pokerfaceTextClient = true;
+    socket.write(Buffer.from([255, 251, 1, 255, 251, 3]));
     socket.write("欢迎来到 Pokerface 纯终端联机桌。\r\n");
     socket.write("本模式支持 nc/telnet，朋友不需要拉代码。\r\n\r\n");
 
@@ -1691,7 +1712,10 @@ class TelnetPokerServer {
   }
 
   handleData(state, chunk) {
-    state.buffer += chunk.replace(/\r/g, "");
+    const text = decodeTelnetInput(chunk);
+    if (!text) return;
+    state.socket.write(text.replace(/\n/g, "\r\n"));
+    state.buffer += text.replace(/\r/g, "");
     const lines = state.buffer.split("\n");
     state.buffer = lines.pop();
     for (const line of lines) this.handleLine(state, line.trim());
@@ -1991,6 +2015,31 @@ function sendText(socket, text) {
   socket.write(`${text.replace(/\n/g, "\r\n")}\r\n`);
 }
 
+function decodeTelnetInput(chunk) {
+  const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8");
+  const outputBytes = [];
+  for (let i = 0; i < bytes.length; i += 1) {
+    const byte = bytes[i];
+    if (byte === 255) {
+      const command = bytes[i + 1];
+      if ([251, 252, 253, 254].includes(command)) {
+        i += 2;
+        continue;
+      }
+      if (command === 250) {
+        i += 2;
+        while (i < bytes.length && !(bytes[i] === 255 && bytes[i + 1] === 240)) i += 1;
+        i += 1;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+    outputBytes.push(byte);
+  }
+  return Buffer.from(outputBytes).toString("utf8");
+}
+
 function parseOnlineClientCommand(text) {
   const lower = text.toLowerCase();
   if (["s", "状态", "status"].includes(lower)) return { type: "room_snapshot" };
@@ -2111,11 +2160,14 @@ async function askRoomConfig(rl) {
 
 function renderOnlineSnapshot(snapshot) {
   const { room, you, game } = snapshot;
-  const lines = ["", `房间 ${room.roomCode} | ${room.status === "waiting" ? "等待中" : "牌局中"}`];
+  const divider = "=".repeat(72);
+  const section = "-".repeat(72);
+  const roomStatus = game?.handFinished ? "手牌结束" : room.status === "waiting" ? "等待中" : "牌局中";
+  const lines = ["", divider, `房间 ${room.roomCode} | ${roomStatus}`];
   lines.push(
     `配置：${room.config.playerCount} 人桌 | 初始筹码 ${room.config.initialStack} | 盲注 ${room.config.smallBlind}/${room.config.bigBlind} | 水下：${room.config.underwater ? "开" : "关"} | 超时：${room.config.actionTimeoutSeconds} 秒`,
   );
-  lines.push("", "座位：");
+  lines.push(section, "座位：");
   for (const seat of room.seats) {
     if (seat.type === "empty") {
       lines.push(`${seat.index}. 空`);
@@ -2128,28 +2180,33 @@ function renderOnlineSnapshot(snapshot) {
     lines.push(`${seat.index}. ${seat.displayName}${youLabel}${host}  ${type}  ${online}  筹码 ${seat.stack}`);
   }
   if (!game) {
-    lines.push("", you?.isHost ? "房主命令：开始/start，添加AI/bot add [座位] [名称] [难度]，移除AI/bot remove 座位，设置AI/bot config 座位 名称 难度" : "玩家命令：入座 位置/sit 位置，离座/leave，刷新/s，退出/q");
+    lines.push(
+      section,
+      you?.isHost ? "房主命令：开始/start，添加AI/bot add [座位] [名称] [难度]，移除AI/bot remove 座位，设置AI/bot config 座位 名称 难度" : "玩家命令：入座 位置/sit 位置，离座/leave，刷新/s，退出/q",
+      divider,
+    );
     return lines.join("\n");
   }
-  lines.push("", `第 ${game.handNo} 手 | ${game.stage} | 轮到：${game.actionPlayerName ?? "无"}`);
+  lines.push(section, `第 ${game.handNo} 手 | ${game.stage} | 轮到：${game.actionPlayerName ?? "无"}`);
   lines.push(`公共牌：${formatCardDtos(game.board)}`);
   const hero = game.players.find((player) => player.seatIndex === you?.seatIndex);
   if (hero?.hole) lines.push(`你的手牌：${formatCardDtos(hero.hole)}`);
   lines.push(`底池：${game.pot}`, `当前最高下注：${game.currentBet}`);
-  lines.push("", "牌桌：");
+  lines.push(section, "牌桌：");
   for (const player of game.players) {
     const hole = player.hole && (player.seatIndex === you?.seatIndex || game.lastHandResult?.revealed?.[player.seatIndex]) ? ` 手牌 ${formatCardDtos(player.hole)}` : "";
     lines.push(`${player.marks.padEnd(2, " ")} ${String(player.position).padEnd(5, " ")} 座${player.seatIndex} ${player.name} 筹码 ${player.stack} 本轮 ${player.currentBet} ${player.status}${hole}${player.handName ? ` ${player.handName}` : ""}`);
   }
-  lines.push("", "最近行动：", ...(game.logs.length ? game.logs : ["无"]));
+  lines.push(section, "最近行动：", ...(game.logs.length ? game.logs : ["无"]));
   if (game.handFinished) {
-    lines.push("", `本手结束：${game.lastHandResult?.summary ?? ""}`);
-    if (you?.isHost) lines.push("输入 下一手/next 开始下一手。");
+    lines.push(section, `本手结束：${game.lastHandResult?.summary ?? ""}`);
+    lines.push(you?.isHost ? "房间仍在。输入 下一手/next 开始下一手。" : "房间仍在，等待房主开始下一手。");
   } else if (game.actionSeatIndex === you?.seatIndex) {
-    lines.push("", `请输入：${game.legalActions.map((action) => action.label).join("，")}，状态/s，退出/q`);
+    lines.push(section, `请输入：${game.legalActions.map((action) => action.label).join("，")}，状态/s，退出/q`);
   } else {
-    lines.push("", `等待 ${game.actionPlayerName} 行动...`);
+    lines.push(section, `等待 ${game.actionPlayerName} 行动...`);
   }
+  lines.push(divider);
   return lines.join("\n");
 }
 
@@ -2298,7 +2355,7 @@ async function main() {
   if (command === "telnet") {
     const options = parseOptions(args);
     const host = options.host || process.env.HOST || "0.0.0.0";
-    const port = Number.parseInt(options.port || process.env.PORT || "8787", 10);
+    const port = Number.parseInt(options.port || process.env.PORT || "80", 10);
     const server = new TelnetPokerServer({ host, port });
     try {
       await server.listen();
@@ -2339,7 +2396,7 @@ async function main() {
     console.log("  node poker.js server --host 0.0.0.0 --port 3000");
     console.log("  node poker.js create your-server.com:3000");
     console.log("  node poker.js join your-server.com:3000 房间码");
-    console.log("  node poker.js telnet --host 0.0.0.0 --port 8787  启动 nc/telnet 纯终端桌");
+    console.log("  node poker.js telnet --host 0.0.0.0 --port 80  启动 nc/telnet 纯终端桌");
     console.log("  node poker.js host                    本机启动服务端并创建房间");
     return;
   }
