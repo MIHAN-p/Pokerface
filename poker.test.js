@@ -90,6 +90,30 @@ test("big blind option can raise and accepts b as raise shorthand", () => {
   assert.match(engine.commandPrompt(), /加注 金额\/r 金额/);
 });
 
+test("big blind can raise when action returns in the first betting round", async () => {
+  const engine = new GameEngine(
+    { playerCount: 2 },
+    {
+      rng: new Random(1),
+      readInput: async () => "b 50",
+      writeOutput: () => {},
+    },
+  );
+  engine.dealer = 1;
+  let botDecisionCount = 0;
+  engine.bot.decide = ({ currentBet, player }) => {
+    botDecisionCount += 1;
+    if (botDecisionCount === 1 && player.currentBet < currentBet) return new Action(ActionKind.CHECK_CALL);
+    return new Action(ActionKind.FOLD);
+  };
+
+  await engine.playHand();
+
+  assert.equal(engine.currentBet, 50);
+  assert.equal(engine.players[0].currentBet, 50);
+  assert.equal(engine.players[0].totalBet, 50);
+});
+
 test("side pot settlement uses contribution levels", () => {
   const engine = new GameEngine({ playerCount: 3 }, { rng: new Random(1), writeOutput: () => {} });
   for (const player of engine.players) {

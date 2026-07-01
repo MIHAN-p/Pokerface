@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node poker.js",
+    "build-html": "node scripts/build-html.js",
     "test": "node --test"
   }
 }
