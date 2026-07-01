@@ -1829,6 +1829,7 @@ class TelnetPokerServer {
       this.pendingHost = false;
       sendText(state.socket, `房间已创建：${room.roomCode}`);
       sendText(state.socket, `朋友连接命令：nc 服务器IP ${this.port}`);
+      sendText(state.socket, "输入 sit 位置 入座，输入 bot add 位置 名字 难度 添加AI，输入 start 开局。");
       room.broadcast();
       return true;
     }
