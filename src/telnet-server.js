@@ -2,6 +2,7 @@ const net = require('node:net');
 const iconv = require("iconv-lite");
 const { actionFromDto, decodeTelnetInput, normalizeDifficulty, parseConfigBool, parseConfigInt, parseOnlineClientCommand, randomCode, sendSnapshot, sendText } = require('./online-protocol');
 const { RoomManager } = require('./room-manager');
+const { Action, ActionKind } = require('./actions');
 const YLW = "\x1b[33m", RST = "\x1b[0m";
 
 class TelnetPokerServer {
@@ -184,6 +185,16 @@ class TelnetPokerServer {
           return;
         }
         if (["q", "退出", "quit"].includes(text.toLowerCase())) {
+          if (state.room?.engine && !state.room.engine.handFinished && state.sessionId) {
+            const session = state.room.sessions.get(state.sessionId);
+            if (session?.seatIndex && state.room.engine.players.some((p) => p.seatIndex === session.seatIndex)) {
+              state.room.engine.applySeatAction(session.seatIndex, new Action(ActionKind.FOLD));
+              state.room.syncStacksFromEngine();
+              for (const [sid, sock] of state.room.clients) {
+                sendText(sock, `${state.displayName} 退出`);
+              }
+            }
+          }
           state.socket.end("Disconnected.\r\n");
           return;
         }
@@ -295,6 +306,18 @@ class TelnetPokerServer {
   disconnect(state) {
     if (state.isHost && state.step !== "command") this.pendingHost = false;
     if (state.room) {
+      // 牌局中断连算弃牌
+      if (state.room.engine && !state.room.engine.handFinished && state.sessionId) {
+        const session = state.room.sessions.get(state.sessionId);
+        if (session?.seatIndex && state.room.engine.players.some((p) => p.seatIndex === session.seatIndex)) {
+          state.room.engine.applySeatAction(session.seatIndex, new Action(ActionKind.FOLD));
+          state.room.syncStacksFromEngine();
+          const name = state.displayName || session.displayName;
+          for (const [sid, sock] of state.room.clients) {
+            if (sid !== state.sessionId) sendText(sock, `${name} 退出`);
+          }
+        }
+      }
       state.room.disconnectSession(state.sessionId);
       if (state.room.clients.size === 0) {
         this.manager.removeRoom(state.room.roomCode);
