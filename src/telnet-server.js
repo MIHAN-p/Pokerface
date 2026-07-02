@@ -274,6 +274,7 @@ class TelnetPokerServer {
     else if (message.type === "remove_bot") room.removeBot(state.sessionId, message.seatIndex);
     else if (message.type === "start_game") room.startGame(state.sessionId);
     else if (message.type === "next_hand") room.nextHand(state.sessionId);
+    else if (message.type === "reset_game") room.resetGame(state.sessionId);
     else if (message.type === "player_action") room.applyPlayerAction(state.sessionId, actionFromDto(message.action), message.clientActionId);
     else if (message.type === "room_snapshot") {
       sendSnapshot(state.socket, room.snapshotFor(state.sessionId));

@@ -26,6 +26,7 @@ class OnlineGameEngine extends GameEngine {
       player.botConfig = seat.botConfig ?? null;
       return player;
     });
+    this.handNo = options.handNo ?? 0;
     this.actionState = null;
     this.handFinished = false;
     this.lastHandResult = null;

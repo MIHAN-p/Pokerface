@@ -74,6 +74,7 @@ function parseOnlineClientCommand(text) {
   if (["离座", "leave"].includes(parts[0])) return { type: "leave_seat" };
   if (["开始", "start", "s"].includes(parts[0])) return { type: "start_game" };
   if (["下一手", "next", "n"].includes(parts[0])) return { type: "next_hand" };
+  if (["重置", "reset", "restart"].includes(parts[0])) return { type: "reset_game" };
   if (parts[0] === "bot" && parts[1] === "add") {
     return { type: "add_bot", seatIndex: parts[2] ? parseSeatIndex(parts[2]) : null, name: parts[3], difficulty: parts[4] };
   }
@@ -171,7 +172,7 @@ function renderOnlineSnapshot(snapshot) {
     }
     lines.push("");
     if (you?.isHost) {
-      lines.push("房主：s | bot add 座 名 难度 | bot remove 座");
+      lines.push("房主：s | bot add 座 名 难度 | bot remove 座 | restart 重置");
     } else {
       lines.push("玩家：sit N | leave | s | q");
     }
@@ -207,7 +208,7 @@ function renderOnlineSnapshot(snapshot) {
   lines.push("");
   lines.push(section, "最近行动：");
   const showLogs = game.logs && game.logs.length ? game.logs : ["无"];
-  lines.push(...showLogs.map((line) => `  ${line.replace(/加注/g, `${RED}加注${RST}`).replace(/全下/g, `${RED}全下${RST}`)}`));
+  lines.push(...showLogs.map((line) => `  ${line.replace(/加注/g, `${RED}加注${RST}`).replace(/全下/g, `${RED}全下${RST}`).replace(/下注/g, `${RED}下注${RST}`)}`));
   if (game.handFinished) {
     lines.push("");
     lines.push(section, "亮牌：");
@@ -226,7 +227,7 @@ function renderOnlineSnapshot(snapshot) {
     }
     lines.push("");
     lines.push(`结果：${game.lastHandResult?.summary ?? ""}`);
-    lines.push(you?.isHost ? "n/next 下一手 | st 状态 | q 退出" : "等待房主开始下一手...");
+    lines.push(you?.isHost ? "n/next 下一手 | restart 重置 | st 状态 | q 退出" : "等待房主开始下一手...");
   } else if (game.actionSeatIndex === you?.seatIndex) {
     lines.push("");
     const actionLabels = game.legalActions.map((action) => action.label).concat(["状态/st", "退出/q"]).join(" ");

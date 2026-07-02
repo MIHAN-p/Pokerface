@@ -401,7 +401,7 @@ test("timeout fold ends only the current hand and allows next hand", async () =>
 
   assert.equal(room.engine.handFinished, true);
   assert.equal(room.status, "playing");
-  assert.match(writes.join(""), /n\/next 下一手 \| st 状态 \| q 退出/);
+  assert.match(writes.join(""), /n\/next 下一手 \| restart 重置 \| st 状态 \| q 退出/);
 
   room.nextHand("host-session");
 
@@ -425,7 +425,7 @@ test("online snapshot renders as compact telnet-friendly lines", () => {
 
   assert.match(rendered, /房间：\d+/);
   assert.match(rendered, /1\. Host\(房主 你\)  真人  在线  \$1000/);
-  assert.match(rendered, /房主：s \| bot add 座 名 难度 \| bot remove 座/);
+  assert.match(rendered, /房主：s \| bot add 座 名 难度 \| bot remove 座 \| restart 重置/);
   assert.doesNotMatch(rendered, /房主命令：.*设置AI/);
   assert.ok(rendered.split("\n").every((line) => line.length <= 56));
 });

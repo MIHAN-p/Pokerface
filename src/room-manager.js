@@ -179,11 +179,35 @@ class PokerRoom {
   nextHand(sessionId) {
     this.requireHost(sessionId);
     if (!this.engine?.handFinished) throw new Error("当前手牌尚未结束");
+    const prevHandNo = this.engine.handNo;
     this.syncStacksFromEngine();
     this.fillEmptySeatsWithBots();
-    this.engine = new OnlineGameEngine(this.seats.filter((seat) => seat.type !== "empty"), this.config);
+    this.engine = new OnlineGameEngine(this.seats.filter((seat) => seat.type !== "empty"), this.config, { handNo: prevHandNo });
+    // 继承水下状态
+    for (const player of this.engine.players) {
+      const seat = this.getSeat(player.seatIndex);
+      if (seat) {
+        player.underwaterHands = seat.underwaterHands ?? 0;
+        player.underwaterDebt = seat.underwaterDebt ?? 0;
+      }
+    }
     this.engine.startHand();
     this.status = "playing";
+    this.processedActions.clear();
+    this.updatedAt = new Date();
+  }
+
+  resetGame(sessionId) {
+    this.requireHost(sessionId);
+    for (const seat of this.seats) {
+      if (seat.type === "human" || seat.type === "bot") {
+        seat.stack = this.config.initialStack;
+        seat.underwaterHands = 0;
+        seat.underwaterDebt = 0;
+      }
+    }
+    this.engine = null;
+    this.status = "waiting";
     this.processedActions.clear();
     this.updatedAt = new Date();
   }
