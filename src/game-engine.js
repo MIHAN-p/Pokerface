@@ -447,7 +447,7 @@ class GameEngine {
     ];
     for (const [idx, player] of this.players.entries()) {
       lines.push(
-        `${this.seatMark(idx).padEnd(4, " ")}  ${this.positionName(idx).padEnd(5, " ")}  ${player.name.padEnd(6, " ")}  ${String(player.stack).padEnd(5, " ")}  ${String(player.currentBet).padEnd(5, " ")}  ${this.playerStatus(player, idx)}`,
+        `${this.seatMark(idx).padEnd(4, " ")}  ${this.positionName(idx).padEnd(5, " ")}  ${this.formatName(player).padEnd(6, " ")}  ${String(player.stack).padEnd(5, " ")}  ${String(player.currentBet).padEnd(5, " ")}  ${this.playerStatus(player, idx)}`,
       );
     }
     lines.push("", divider, "最近行动：");
@@ -472,19 +472,21 @@ class GameEngine {
   }
 
   playerStatus(player, idx) {
-    let status;
-    if (player.eliminated) status = "已淘汰";
-    else if (player.folded) status = "已弃牌";
-    else if (player.allIn) status = "已全下";
-    else if (idx === this.actionIndex) status = "行动中";
-    else status = player.lastAction || "等待";
-    const underwater = this.underwaterLabel(player);
-    return underwater ? `${status} ${underwater}` : status;
+    if (player.eliminated) return "已淘汰";
+    if (player.folded) return "已弃牌";
+    if (player.allIn) return "已全下";
+    if (idx === this.actionIndex) return "行动中";
+    return player.lastAction || "等待";
   }
 
   underwaterLabel(player) {
     if (!player.underwaterHands || !player.underwaterDebt) return "";
     return `水下${player.underwaterHands}手（-${player.underwaterDebt}）`;
+  }
+
+  formatName(player) {
+    const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
+    return player.name + uw;
   }
 
   seatMark(idx) {
