@@ -230,7 +230,8 @@ function renderOnlineSnapshot(snapshot) {
     lines.push(you?.isHost ? "n/next 下一手 | restart 重置 | st 状态 | q 退出" : "等待房主开始下一手...");
   } else if (game.actionSeatIndex === you?.seatIndex) {
     lines.push("");
-    const actionLabels = game.legalActions.map((action) => action.label).concat(["状态/st", "退出/q"]).join(" ");
+    const resetTip = you?.isHost ? " 重置/restart" : "";
+    const actionLabels = game.legalActions.map((action) => action.label).concat(["状态/st", "退出/q"]).join(" ") + resetTip;
     if (hero?.hole) lines.push(`${GRN}你的手牌：${formatCardDtos(hero.hole)}${RST}`);
     lines.push(`${YLW}${actionLabels}${RST}`);
   } else {

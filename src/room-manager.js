@@ -177,7 +177,6 @@ class PokerRoom {
   }
 
   nextHand(sessionId) {
-    this.requireHost(sessionId);
     if (!this.engine?.handFinished) throw new Error("当前手牌尚未结束");
     const prevHandNo = this.engine.handNo;
     this.syncStacksFromEngine();
