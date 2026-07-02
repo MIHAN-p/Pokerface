@@ -199,7 +199,17 @@ class PokerRoom {
   resetGame(sessionId) {
     this.requireHost(sessionId);
     for (const seat of this.seats) {
-      if (seat.type === "human" || seat.type === "bot") {
+      if (seat.type === "bot") {
+        // 清除 AI，释放座位
+        seat.type = "empty";
+        seat.displayName = "";
+        seat.sessionId = null;
+        seat.connected = false;
+        seat.stack = this.config.initialStack;
+        seat.underwaterHands = 0;
+        seat.underwaterDebt = 0;
+        seat.botConfig = null;
+      } else if (seat.type === "human") {
         seat.stack = this.config.initialStack;
         seat.underwaterHands = 0;
         seat.underwaterDebt = 0;

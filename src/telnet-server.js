@@ -2,6 +2,7 @@ const net = require('node:net');
 const iconv = require("iconv-lite");
 const { actionFromDto, decodeTelnetInput, normalizeDifficulty, parseConfigBool, parseConfigInt, parseOnlineClientCommand, randomCode, sendSnapshot, sendText } = require('./online-protocol');
 const { RoomManager } = require('./room-manager');
+const YLW = "\x1b[33m", RST = "\x1b[0m";
 
 class TelnetPokerServer {
   constructor({ host = "0.0.0.0", port = 8787 } = {}) {
@@ -169,7 +170,7 @@ class TelnetPokerServer {
           // 通知其他玩家
           for (const [otherSessionId, otherSocket] of state.room.clients) {
             if (otherSessionId !== state.sessionId) {
-              sendText(otherSocket, `${state.displayName} 加入，正在选择座位。`);
+              sendText(otherSocket, `${YLW}${state.displayName} 加入，正在选择座位。${RST}`);
             }
           }
           state.room.broadcast();
