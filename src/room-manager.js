@@ -179,9 +179,13 @@ class PokerRoom {
   nextHand(sessionId) {
     if (!this.engine?.handFinished) throw new Error("当前手牌尚未结束");
     const prevHandNo = this.engine.handNo;
+    const prevDealerSeat = this.engine.players[this.engine.dealer]?.seatIndex;
     this.syncStacksFromEngine();
     this.fillEmptySeatsWithBots();
-    this.engine = new OnlineGameEngine(this.seats.filter((seat) => seat.type !== "empty"), this.config, { handNo: prevHandNo });
+    const occupied = this.seats.filter((seat) => seat.type !== "empty");
+    this.engine = new OnlineGameEngine(occupied, this.config, { handNo: prevHandNo,
+      dealer: occupied.findIndex((s) => s.index === prevDealerSeat),
+    });
     // 继承水下状态
     for (const player of this.engine.players) {
       const seat = this.getSeat(player.seatIndex);

@@ -27,6 +27,7 @@ class OnlineGameEngine extends GameEngine {
       return player;
     });
     this.handNo = options.handNo ?? 0;
+    this.dealer = options.dealer ?? this.rng.int(0, this.players.length - 1);
     this.actionState = null;
     this.handFinished = false;
     this.lastHandResult = null;
