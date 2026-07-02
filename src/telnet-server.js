@@ -168,13 +168,13 @@ class TelnetPokerServer {
           const cfg = state.room.config;
           sendText(state.socket, `已加入房间 ${state.room.roomCode}：${cfg.playerCount}人桌  ${cfg.initialStack}筹码  盲${cfg.smallBlind}/${cfg.bigBlind}  ${cfg.actionTimeoutSeconds}秒超时`);
           sendText(state.socket, "输入 sit 位置 入座，使用 s 查看状态。");
-          // 通知其他玩家
+          state.room.broadcast();
+          // 广播后再发通知，避免被 snapshot 覆盖
           for (const [otherSessionId, otherSocket] of state.room.clients) {
             if (otherSessionId !== state.sessionId) {
               sendText(otherSocket, `${YLW}${state.displayName} 加入，正在选择座位。${RST}`);
             }
           }
-          state.room.broadcast();
         }
         return;
       }
