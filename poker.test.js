@@ -226,10 +226,10 @@ test("hand review shows all hole cards and completed board after folds", () => {
 
   const review = outputs.join("\n");
   assert.match(review, /本手复盘/);
-  assert.match(review, /完整公共牌：10♥红桃 6♦方片 4♥红桃 4♦方片 3♥红桃/);
-  assert.match(review, /你\s+未弃牌\s+3♦方片 A♣梅花/);
-  assert.match(review, /AI-1\s+已弃牌\s+6♥红桃 8♥红桃/);
-  assert.match(review, /AI-2\s+已弃牌\s+J♥红桃 A♠黑桃/);
+  assert.match(review, /完整公共牌：10红桃 6方片 4红桃 4方片 3红桃/);
+  assert.match(review, /你\s+未弃牌\s+3方片 A梅花/);
+  assert.match(review, /AI-1\s+已弃牌\s+6红桃 8红桃/);
+  assert.match(review, /AI-2\s+已弃牌\s+J红桃 A黑桃/);
 });
 
 test("showdown marks winners inline in the player table", () => {
@@ -251,8 +251,8 @@ test("showdown marks winners inline in the player table", () => {
 
   const text = outputs.join("\n");
   assert.doesNotMatch(text, /赢家：/);
-  assert.match(text, /你\(赢家\)\s+A♠黑桃 K♥红桃\s+一对/);
-  assert.match(text, /AI-1\s+9♠黑桃 8♥红桃\s+一对/);
+  assert.match(text, /你\(赢家\)\s+A黑桃 K红桃\s+一对/);
+  assert.match(text, /AI-1\s+9黑桃 8红桃\s+一对/);
 });
 
 test("street pause can carry an entered action into the betting round", async () => {
@@ -292,11 +292,11 @@ test("render state highlights hero position and uses seat table", () => {
   assert.match(state, /第 1 手 \| 翻牌前 \| 你的位置：CO（关煞位）/);
   assert.match(state, /标记\s+位置\s+玩家\s+筹码\s+本轮\s+状态/);
   assert.match(state, /CO\s+你\s+1000\s+0\s+行动中/);
-  assert.match(state, /最近行动：[\s\S]*你的手牌：K♠黑桃 4♠黑桃[\s\S]*请输入：/);
+  assert.match(state, /最近行动：[\s\S]*你的手牌：K黑桃 4黑桃[\s\S]*请输入：/);
   assert.match(state, /庄\s+BTN\s+AI-1/);
   assert.match(state, /小\s+SB\s+AI-2/);
   assert.match(state, /大\s+BB\s+AI-3/);
-  assert.match(state, /请输入：弃牌\/f，跟注\/c，加注 金额\/r 金额，全下\/a，状态\/s，退出\/q/);
+  assert.match(state, /请输入：弃牌\/f，跟注\/c，加注 金额\/r 金额，全下\/a，状态\/st，退出\/q/);
 });
 
 test("position names are still available for strategy", () => {
@@ -401,7 +401,7 @@ test("timeout fold ends only the current hand and allows next hand", async () =>
 
   assert.equal(room.engine.handFinished, true);
   assert.equal(room.status, "playing");
-  assert.match(writes.join(""), /房间仍在。输入 下一手\/next 开始下一手。/);
+  assert.match(writes.join(""), /n\/next 下一手 \| st 状态 \| q 退出/);
 
   room.nextHand("host-session");
 
@@ -410,7 +410,7 @@ test("timeout fold ends only the current hand and allows next hand", async () =>
   assert.equal(room.engine.players.some((player) => player.seatIndex === otherPlayer.seatIndex), true);
 });
 
-test("online snapshot renders as narrow telnet-friendly lines", () => {
+test("online snapshot renders as compact telnet-friendly lines", () => {
   const manager = new RoomManager({ adminToken: "TOKEN" });
   const socket = { write: () => {}, _pokerfaceTextClient: true };
   const room = manager.createRoom({
@@ -424,14 +424,13 @@ test("online snapshot renders as narrow telnet-friendly lines", () => {
   const rendered = renderOnlineSnapshot(room.snapshotFor("host-session"));
 
   assert.match(rendered, /房间：\d+/);
-  assert.match(rendered, /座 1：Host/);
-  assert.match(rendered, /类型：真人 \| 在线 \| 筹码 1000/);
-  assert.match(rendered, /房主命令：\n  start\n  bot add/);
+  assert.match(rendered, /1\. Host\(房主 你\)  真人  在线  \$1000/);
+  assert.match(rendered, /房主：s \| bot add 座 名 难度 \| bot remove 座/);
   assert.doesNotMatch(rendered, /房主命令：.*设置AI/);
   assert.ok(rendered.split("\n").every((line) => line.length <= 56));
 });
 
-test("online action prompt repeats hero hand with suit symbols", () => {
+test("online action prompt repeats hero hand in output", () => {
   const snapshot = {
     room: {
       roomCode: "123456",
@@ -470,7 +469,7 @@ test("online action prompt repeats hero hand with suit symbols", () => {
 
   const rendered = renderOnlineSnapshot(snapshot);
 
-  assert.equal((rendered.match(/你的手牌：A♠黑桃 K♥红桃/g) ?? []).length, 2);
+  assert.equal((rendered.match(/A黑桃 K红桃/g) ?? []).length, 3);
   assert.doesNotMatch(rendered, /\?/);
 });
 
@@ -499,7 +498,7 @@ test("telnet server creates a room through plain terminal input", async () => {
         }
       });
       socket.on("connect", () => {
-        socket.write("MIH\n\n\n\n\n\n\n\n");
+        socket.write("MIH\n\n\n\n\n\n\n\n\n");
       });
       socket.on("error", (error) => {
         clearTimeout(timeout);

@@ -815,12 +815,12 @@ class GameEngine {
     const human = this.players[0];
     const toCall = Math.max(0, this.currentBet - human.currentBet);
     if (toCall > 0) {
-      return "弃牌/f，跟注/c，加注 金额/r 金额，全下/a，状态/s，退出/q";
+      return "弃牌/f，跟注/c，加注 金额/r 金额，全下/a，状态/st，退出/q";
     }
     if (this.currentBet > 0) {
-      return "弃牌/f，过牌/c，加注 金额/r 金额，全下/a，状态/s，退出/q";
+      return "弃牌/f，过牌/c，加注 金额/r 金额，全下/a，状态/st，退出/q";
     }
-    return "弃牌/f，过牌/c，下注 金额/b 金额，全下/a，状态/s，退出/q";
+    return "弃牌/f，过牌/c，下注 金额/b 金额，全下/a，状态/st，退出/q";
   }
 
   playerStatus(player, idx) {
@@ -1521,6 +1521,10 @@ class RoomManager {
     return room;
   }
 
+  removeRoom(roomCode) {
+    this.rooms.delete(String(roomCode));
+  }
+
   joinRoom({ roomCode, sessionId, displayName, socket, reconnectCode }) {
     const room = this.rooms.get(String(roomCode));
     if (!room) throw new Error("房间不存在或已关闭");
@@ -1717,7 +1721,6 @@ class TelnetPokerServer {
         return;
       }
       sendText(socket, "欢迎来到 Pokerface 纯终端联机桌。");
-      sendText(socket, "本模式支持 nc/telnet，朋友不需要拉代码。");
       sendText(socket, "");
       if (actualIsHost) {
         this.pendingHost = true;
@@ -1960,7 +1963,13 @@ class TelnetPokerServer {
     if (state.isHost && state.step !== "command") this.pendingHost = false;
     if (state.room) {
       state.room.disconnectSession(state.sessionId);
-      state.room.broadcast();
+      if (state.room.clients.size === 0) {
+        // 没有终端连接了，清理房间，让下一个人成为房主
+        this.manager.removeRoom(state.room.roomCode);
+        this.pendingHost = false;
+      } else {
+        state.room.broadcast();
+      }
     }
   }
 
@@ -2166,11 +2175,11 @@ function decodeTelnetInput(chunk) {
 
 function parseOnlineClientCommand(text) {
   const lower = text.toLowerCase();
-  if (["s", "状态", "status"].includes(lower)) return { type: "room_snapshot" };
+  if (["st", "状态", "status"].includes(lower)) return { type: "room_snapshot" };
   const parts = text.split(/\s+/);
   if (["入座", "sit"].includes(parts[0])) return { type: "sit_down", seatIndex: parseSeatIndex(parts[1]) };
   if (["离座", "leave"].includes(parts[0])) return { type: "leave_seat" };
-  if (["开始", "start"].includes(parts[0])) return { type: "start_game" };
+  if (["开始", "start", "s"].includes(parts[0])) return { type: "start_game" };
   if (["下一手", "next", "n"].includes(parts[0])) return { type: "next_hand" };
   if (parts[0] === "bot" && parts[1] === "add") {
     return { type: "add_bot", seatIndex: parts[2] ? parseSeatIndex(parts[2]) : null, name: parts[3], difficulty: parts[4] };
@@ -2309,7 +2318,7 @@ function renderOnlineSnapshot(snapshot) {
     }
     lines.push("");
     if (you?.isHost) {
-      lines.push("房主：start | bot add 座 名 难度 | bot remove 座");
+      lines.push("房主：s | bot add 座 名 难度 | bot remove 座");
     } else {
       lines.push("玩家：sit N | leave | s | q");
     }
@@ -2319,14 +2328,15 @@ function renderOnlineSnapshot(snapshot) {
   // 游戏中：紧凑牌局视图
   lines.push("");
   const hero = game.players.find((p) => p.seatIndex === you?.seatIndex);
-  const handInfo = hero?.hole ? `  ${GRN}手牌：${formatCardDtos(hero.hole)}${RST}` : "";
-  const boardInfo = game.board.length ? `  公牌：${formatCardDtos(game.board)}` : "";
+  const handInfo = hero?.hole ? `${GRN}手牌：${formatCardDtos(hero.hole)}${RST}` : "";
+  const boardInfo = game.board.length ? `${GRN}公牌：${formatCardDtos(game.board)}${RST}` : "";
   const turnInfo = game.actionSeatIndex === you?.seatIndex
     ? `${YLW}轮到：${game.actionPlayerName}${RST}`
     : `轮到：${game.actionPlayerName ?? "无"}`;
   lines.push(`第${game.handNo}手  ${game.stage}  ${turnInfo}` +
     `  底池：${game.pot}  最高：${game.currentBet}`);
-  if (boardInfo || handInfo) lines.push((boardInfo + handInfo).trim());
+  if (boardInfo) lines.push(boardInfo);
+  if (handInfo) lines.push(handInfo);
   lines.push(section, "牌桌：");
   lines.push(`  #  Name            Pos       Stack/Bet    Status`);
   for (const player of game.players) {
@@ -2346,9 +2356,12 @@ function renderOnlineSnapshot(snapshot) {
   if (game.handFinished) {
     lines.push("");
     lines.push(section, "亮牌：");
+    const winners = new Set(game.lastHandResult?.winners ?? []);
     for (const player of game.players) {
       const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
-      const name = (player.name + uw).padEnd(14);
+      const isWinner = winners.has(player.seatIndex);
+      const winLabel = isWinner ? `${RED}(赢家)${RST}` : "";
+      const name = (player.name + uw + winLabel).padEnd(18);
       if (player.hole) {
         const handName = player.handName ? `  (${player.handName})` : "";
         lines.push(`  ${player.seatIndex}. ${name} ${formatCardDtos(player.hole)}${handName}`);
@@ -2358,10 +2371,10 @@ function renderOnlineSnapshot(snapshot) {
     }
     lines.push("");
     lines.push(`结果：${game.lastHandResult?.summary ?? ""}`);
-    lines.push(you?.isHost ? `n/next 下一手 | s 状态 | q 退出` : `等待房主开始下一手...`);
+    lines.push(you?.isHost ? `n/next 下一手 | st 状态 | q 退出` : `等待房主开始下一手...`);
   } else if (game.actionSeatIndex === you?.seatIndex) {
     lines.push("");
-    const actionLabels = game.legalActions.map(a => a.label).concat(["状态/s", "退出/q"]).join(" ");
+    const actionLabels = game.legalActions.map(a => a.label).concat(["状态/st", "退出/q"]).join(" ");
     if (hero?.hole) lines.push(`${GRN}你的手牌：${formatCardDtos(hero.hole)}${RST}`);
     lines.push(`${YLW}${actionLabels}${RST}`);
   } else {
