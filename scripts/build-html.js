@@ -2,7 +2,16 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const rootDir = path.resolve(__dirname, "..");
-const pokerPath = path.join(rootDir, "poker.js");
+const browserCoreModules = [
+  "src/constants.js",
+  "src/random.js",
+  "src/cards.js",
+  "src/hand-evaluator.js",
+  "src/actions.js",
+  "src/player.js",
+  "src/bot-player.js",
+  "src/game-engine.js",
+];
 const htmlPath = path.join(rootDir, "index.html");
 
 const startMarker = "      // POKER_CORE_START: generated from poker.js";
@@ -12,16 +21,20 @@ function readUtf8(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-function extractCore(source) {
-  const withoutNodeImports = source.replace(
-    /^const readline = require\("node:readline\/promises"\);\r?\nconst \{ stdin: input, stdout: output \} = require\("node:process"\);\r?\n\r?\n/,
-    "",
-  );
-  const cliStart = withoutNodeImports.search(/\r?\nasync function askInt\(/);
-  if (cliStart === -1) {
-    throw new Error("Could not find CLI helper boundary in poker.js");
+function stripCommonJs(source, moduleName) {
+  const withoutRequires = source.replace(/^const .+ require\(.+\);\r?\n/gm, "");
+  const withoutExports = withoutRequires.replace(/\r?\nmodule\.exports = \{[\s\S]*?\};\s*$/, "");
+  if (withoutExports === source) {
+    throw new Error(`Could not strip CommonJS wrapper from ${moduleName}`);
   }
-  return withoutNodeImports.slice(0, cliStart).trimEnd().replace(/<\/script/gi, "<\\/script");
+  return withoutExports.trimEnd();
+}
+
+function buildCore() {
+  return browserCoreModules
+    .map((modulePath) => stripCommonJs(readUtf8(path.join(rootDir, modulePath)), modulePath))
+    .join("\n\n")
+    .replace(/<\/script/gi, "<\\/script");
 }
 
 function indentForHtml(source) {
@@ -56,10 +69,9 @@ function replaceGeneratedCore(html, generatedCore) {
   return `${html.slice(0, coreStart)}${startMarker}\n${generatedCore}\n${endMarker}${html.slice(uiStart)}`;
 }
 
-const pokerSource = readUtf8(pokerPath);
 const htmlSource = readUtf8(htmlPath);
-const generatedCore = indentForHtml(extractCore(pokerSource));
+const generatedCore = indentForHtml(buildCore());
 const nextHtml = replaceGeneratedCore(htmlSource, generatedCore);
 
 fs.writeFileSync(htmlPath, nextHtml, "utf8");
-console.log("Updated index.html from poker.js");
+console.log("Updated index.html from src browser core modules");

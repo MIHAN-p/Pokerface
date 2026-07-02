@@ -1,0 +1,228 @@
+const net = require('node:net');
+const { actionFromDto, decodeTelnetInput, normalizeDifficulty, parseConfigBool, parseConfigInt, parseOnlineClientCommand, randomCode, sendSnapshot, sendText } = require('./online-protocol');
+const { RoomManager } = require('./room-manager');
+
+class TelnetPokerServer {
+  constructor({ host = "0.0.0.0", port = 8787 } = {}) {
+    this.host = host;
+    this.port = port;
+    this.adminToken = randomCode(8);
+    this.manager = new RoomManager({ adminToken: this.adminToken, allowMultipleRooms: false });
+    this.server = net.createServer((socket) => this.handleSocket(socket));
+    this.pendingHost = false;
+  }
+
+  listen() {
+    return new Promise((resolve, reject) => {
+      this.server.once("error", reject);
+      this.server.listen(this.port, this.host, () => {
+        this.server.off("error", reject);
+        this.port = this.server.address().port;
+        console.log("Pokerface 纯终端服务已启动");
+        console.log(`地址：${this.host}`);
+        console.log(`端口：${this.port}`);
+        console.log("");
+        console.log(`朋友连接命令：nc ${this.host === "0.0.0.0" ? "your-server.com" : this.host} ${this.port}`);
+        console.log(`Windows 可用：telnet ${this.host === "0.0.0.0" ? "your-server.com" : this.host} ${this.port}`);
+        resolve();
+      });
+    });
+  }
+
+  close() {
+    return new Promise((resolve) => this.server.close(resolve));
+  }
+
+  handleSocket(socket) {
+    socket._pokerfaceTextClient = true;
+    socket.write(Buffer.from([255, 252, 1, 255, 251, 3]));
+    socket.write("欢迎来到 Pokerface 纯终端联机桌。\r\n");
+    socket.write("本模式支持 nc/telnet，朋友不需要拉代码。\r\n\r\n");
+
+    const state = {
+      socket,
+      buffer: "",
+      sessionId: randomCode(16),
+      room: null,
+      step: "name",
+      displayName: "",
+      isHost: this.manager.rooms.size === 0 && !this.pendingHost,
+      config: {},
+    };
+    if (this.manager.rooms.size === 0 && this.pendingHost) {
+      socket.write("房主正在创建房间，请稍后重新连接。\r\n");
+      socket.end();
+      return;
+    }
+    if (state.isHost) {
+      this.pendingHost = true;
+      socket.write("你是第一个连接的玩家，将成为房主。\r\n");
+      this.prompt(state, "昵称（默认 房主）：");
+    } else {
+      this.prompt(state, "昵称（默认 玩家）：");
+    }
+
+    socket.on("data", (chunk) => this.handleData(state, chunk));
+    socket.on("close", () => this.disconnect(state));
+    socket.on("error", () => this.disconnect(state));
+  }
+
+  handleData(state, chunk) {
+    const text = decodeTelnetInput(chunk);
+    if (!text) return;
+    state.buffer += text.replace(/\r/g, "");
+    const lines = state.buffer.split("\n");
+    state.buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) state.socket.write(`${trimmed}\r\n`);
+      this.handleLine(state, trimmed);
+    }
+  }
+
+  handleLine(state, text) {
+    try {
+      if (state.step === "name") {
+        state.displayName = text || (state.isHost ? "房主" : "玩家");
+        if (state.isHost) {
+          state.step = "playerCount";
+          this.prompt(state, "总座位数 2-9（默认 6）：");
+        } else {
+          const room = [...this.manager.rooms.values()][0];
+          if (!room) throw new Error("房间还不存在，请稍后重新连接");
+          state.room = this.manager.joinRoom({
+            roomCode: room.roomCode,
+            sessionId: state.sessionId,
+            displayName: state.displayName,
+            socket: state.socket,
+          });
+          state.step = "command";
+          sendText(state.socket, `已加入房间 ${state.room.roomCode}。输入 sit 位置 入座。`);
+          state.room.broadcast();
+        }
+        return;
+      }
+
+      if (this.handleHostConfigLine(state, text)) return;
+
+      if (state.step === "command") {
+        if (!text) {
+          sendSnapshot(state.socket, state.room.snapshotFor(state.sessionId));
+          return;
+        }
+        if (["q", "退出", "quit"].includes(text.toLowerCase())) {
+          state.socket.end("Disconnected.\r\n");
+          return;
+        }
+        const message = parseOnlineClientCommand(text);
+        this.applyTextCommand(state, message);
+      }
+    } catch (error) {
+      sendText(state.socket, `错误：${error.message}`);
+      this.prompt(state, state.step === "command" ? "> " : "");
+    }
+  }
+
+  handleHostConfigLine(state, text) {
+    if (!state.isHost) return false;
+    const defaults = {
+      playerCount: 6,
+      initialStack: 1000,
+      smallBlind: 5,
+      bigBlind: 10,
+      underwater: true,
+      actionTimeoutSeconds: 60,
+      difficulty: "普通",
+    };
+    if (state.step === "playerCount") {
+      state.config.playerCount = text ? parseConfigInt(text, 2, 9, "总座位数") : defaults.playerCount;
+      state.step = "initialStack";
+      this.prompt(state, "初始筹码（默认 1000）：");
+      return true;
+    }
+    if (state.step === "initialStack") {
+      state.config.initialStack = text ? parseConfigInt(text, 1, null, "初始筹码") : defaults.initialStack;
+      state.step = "smallBlind";
+      this.prompt(state, "小盲注（默认 5）：");
+      return true;
+    }
+    if (state.step === "smallBlind") {
+      state.config.smallBlind = text ? parseConfigInt(text, 1, null, "小盲注") : defaults.smallBlind;
+      state.step = "bigBlind";
+      this.prompt(state, `大盲注（默认 ${Math.max(10, state.config.smallBlind * 2)}）：`);
+      return true;
+    }
+    if (state.step === "bigBlind") {
+      const defaultBigBlind = Math.max(10, state.config.smallBlind * 2);
+      state.config.bigBlind = text ? parseConfigInt(text, state.config.smallBlind + 1, null, "大盲注") : defaultBigBlind;
+      state.step = "underwater";
+      this.prompt(state, "开启水下模式（默认 是，是/否）：");
+      return true;
+    }
+    if (state.step === "underwater") {
+      state.config.underwater = text ? parseConfigBool(text) : defaults.underwater;
+      state.step = "actionTimeoutSeconds";
+      this.prompt(state, "行动超时秒数（默认 60）：");
+      return true;
+    }
+    if (state.step === "actionTimeoutSeconds") {
+      state.config.actionTimeoutSeconds = text ? parseConfigInt(text, 5, null, "行动超时秒数") : defaults.actionTimeoutSeconds;
+      state.step = "difficulty";
+      this.prompt(state, "AI 难度：简单 / 普通 / 困难（默认 普通）：");
+      return true;
+    }
+    if (state.step === "difficulty") {
+      state.config.difficulty = text ? normalizeDifficulty(text) : defaults.difficulty;
+      const room = this.manager.createRoom({
+        adminToken: this.adminToken,
+        sessionId: state.sessionId,
+        displayName: state.displayName,
+        config: state.config,
+        socket: state.socket,
+      });
+      state.room = room;
+      state.step = "command";
+      this.pendingHost = false;
+      sendText(state.socket, `房间已创建：${room.roomCode}`);
+      sendText(state.socket, `朋友连接命令：nc 服务器IP ${this.port}`);
+      sendText(state.socket, "输入 sit 位置 入座，输入 bot add 位置 名字 难度 添加AI，输入 start 开局。");
+      room.broadcast();
+      return true;
+    }
+    return false;
+  }
+
+  applyTextCommand(state, message) {
+    const room = state.room;
+    if (!room) throw new Error("尚未加入房间");
+    if (message.type === "sit_down") room.sit(state.sessionId, message.seatIndex);
+    else if (message.type === "leave_seat") room.leaveSeat(state.sessionId);
+    else if (message.type === "add_bot") room.addBot(state.sessionId, message);
+    else if (message.type === "update_bot") room.updateBot(state.sessionId, message);
+    else if (message.type === "remove_bot") room.removeBot(state.sessionId, message.seatIndex);
+    else if (message.type === "start_game") room.startGame(state.sessionId);
+    else if (message.type === "next_hand") room.nextHand(state.sessionId);
+    else if (message.type === "player_action") room.applyPlayerAction(state.sessionId, actionFromDto(message.action), message.clientActionId);
+    else if (message.type === "room_snapshot") {
+      sendSnapshot(state.socket, room.snapshotFor(state.sessionId));
+      return;
+    } else {
+      throw new Error("未知命令");
+    }
+    room.broadcast();
+  }
+
+  disconnect(state) {
+    if (state.isHost && state.step !== "command") this.pendingHost = false;
+    if (state.room) {
+      state.room.disconnectSession(state.sessionId);
+      state.room.broadcast();
+    }
+  }
+
+  prompt(state, text) {
+    if (text) state.socket.write(text);
+  }
+}
+
+module.exports = { TelnetPokerServer };
