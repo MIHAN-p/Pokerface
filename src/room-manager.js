@@ -18,6 +18,8 @@ class PokerRoom {
       connected: false,
       reconnectCode: null,
       stack: this.config.initialStack,
+      underwaterHands: 0,
+      underwaterDebt: 0,
       botConfig: null,
     }));
     this.sessions = new Map();
@@ -94,6 +96,8 @@ class PokerRoom {
       connected: false,
       reconnectCode: null,
       stack: this.config.initialStack,
+      underwaterHands: 0,
+      underwaterDebt: 0,
       botConfig: null,
     });
     session.seatIndex = null;
@@ -200,7 +204,11 @@ class PokerRoom {
     if (!this.engine) return;
     for (const player of this.engine.players) {
       const seat = this.getSeat(player.seatIndex);
-      if (seat) seat.stack = player.stack;
+      if (seat) {
+        seat.stack = player.stack;
+        seat.underwaterHands = player.underwaterHands;
+        seat.underwaterDebt = player.underwaterDebt;
+      }
     }
   }
 
@@ -222,6 +230,8 @@ class PokerRoom {
           isYou: seat.sessionId === sessionId,
           isHost: seat.sessionId === this.hostSessionId,
           botDifficulty: seat.type === "bot" ? seat.botConfig?.difficulty ?? this.config.difficulty : null,
+          underwaterHands: seat.underwaterHands ?? 0,
+          underwaterDebt: seat.underwaterDebt ?? 0,
         })),
       },
       you: session
@@ -292,15 +302,21 @@ class RoomManager {
   createRoom({ adminToken, sessionId, displayName, config, socket }) {
     if (adminToken !== this.adminToken) throw new Error("管理口令错误");
     if (!this.allowMultipleRooms && this.rooms.size > 0) throw new Error("当前服务端只允许创建一个房间");
-    let roomCode;
-    do {
-      roomCode = String(crypto.randomInt(100000, 1000000));
-    } while (this.rooms.has(roomCode));
+    let roomCode = (config.roomCode || "").trim();
+    if (!roomCode || this.rooms.has(roomCode)) {
+      do {
+        roomCode = String(crypto.randomInt(100000, 1000000));
+      } while (this.rooms.has(roomCode));
+    }
     const room = new PokerRoom({ roomCode, hostSessionId: sessionId, config });
     room.addSession({ sessionId, displayName, isHost: true, socket });
     room.sit(sessionId, 1);
     this.rooms.set(roomCode, room);
     return room;
+  }
+
+  removeRoom(roomCode) {
+    this.rooms.delete(String(roomCode));
   }
 
   joinRoom({ roomCode, sessionId, displayName, socket, reconnectCode }) {

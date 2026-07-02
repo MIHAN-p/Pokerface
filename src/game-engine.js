@@ -463,12 +463,12 @@ class GameEngine {
     const human = this.players[0];
     const toCall = Math.max(0, this.currentBet - human.currentBet);
     if (toCall > 0) {
-      return "弃牌/f，跟注/c，加注 金额/r 金额，全下/a，状态/s，退出/q";
+      return "弃牌/f，跟注/c，加注 金额/r 金额，全下/a，状态/st，退出/q";
     }
     if (this.currentBet > 0) {
-      return "弃牌/f，过牌/c，加注 金额/r 金额，全下/a，状态/s，退出/q";
+      return "弃牌/f，过牌/c，加注 金额/r 金额，全下/a，状态/st，退出/q";
     }
-    return "弃牌/f，过牌/c，下注 金额/b 金额，全下/a，状态/s，退出/q";
+    return "弃牌/f，过牌/c，下注 金额/b 金额，全下/a，状态/st，退出/q";
   }
 
   playerStatus(player, idx) {

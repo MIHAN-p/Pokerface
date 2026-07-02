@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
-const { ActionKind, RANK_NAMES, SUIT_ICONS, SUIT_NAMES } = require('./constants');
+const iconv = require("iconv-lite");
+const { ActionKind, RANK_NAMES, SUIT_NAMES } = require('./constants');
 const { Action, InputParser } = require('./actions');
 
 function actionToDto(action) {
@@ -16,20 +17,32 @@ function sendJson(socket, payload) {
 }
 
 function sendSnapshot(socket, snapshot) {
+  const snapshotText = renderOnlineSnapshot(snapshot).replace(/\n/g, "\r\n");
   if (socket._pokerfaceTextClient) {
-    sendText(socket, renderOnlineSnapshot(snapshot));
-    socket.write("> ");
+    if (socket._gbkEncoding) {
+      socket.write(iconv.encode(`${snapshotText}\r\n> `, "gbk"));
+    } else {
+      socket.write(`${snapshotText}\r\n> `);
+    }
     return;
   }
   sendJson(socket, snapshot);
 }
 
 function sendText(socket, text) {
-  socket.write(`${text.replace(/\n/g, "\r\n")}\r\n`);
+  const out = `${text.replace(/\n/g, "\r\n")}\r\n`;
+  if (socket && socket._gbkEncoding) {
+    socket.write(iconv.encode(out, "gbk"));
+  } else {
+    socket.write(out);
+  }
 }
 
 function decodeTelnetInput(chunk) {
   const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8");
+  if (bytes.length >= 3 && bytes[0] === 255 && [251, 252, 253, 254].includes(bytes[1])) {
+    return null;
+  }
   const outputBytes = [];
   for (let i = 0; i < bytes.length; i += 1) {
     const byte = bytes[i];
@@ -55,12 +68,12 @@ function decodeTelnetInput(chunk) {
 
 function parseOnlineClientCommand(text) {
   const lower = text.toLowerCase();
-  if (["s", "状态", "status"].includes(lower)) return { type: "room_snapshot" };
+  if (["st", "状态", "status"].includes(lower)) return { type: "room_snapshot" };
   const parts = text.split(/\s+/);
   if (["入座", "sit"].includes(parts[0])) return { type: "sit_down", seatIndex: parseSeatIndex(parts[1]) };
   if (["离座", "leave"].includes(parts[0])) return { type: "leave_seat" };
-  if (["开始", "start"].includes(parts[0])) return { type: "start_game" };
-  if (["下一手", "next"].includes(parts[0])) return { type: "next_hand" };
+  if (["开始", "start", "s"].includes(parts[0])) return { type: "start_game" };
+  if (["下一手", "next", "n"].includes(parts[0])) return { type: "next_hand" };
   if (parts[0] === "bot" && parts[1] === "add") {
     return { type: "add_bot", seatIndex: parts[2] ? parseSeatIndex(parts[2]) : null, name: parts[3], difficulty: parts[4] };
   }
@@ -92,7 +105,7 @@ function normalizeRoomConfig(config = {}) {
     bigBlind,
     underwater: config.underwater ?? true,
     difficulty: normalizeDifficulty(config.difficulty),
-    actionTimeoutSeconds: clampInt(config.actionTimeoutSeconds ?? 60, 5),
+    actionTimeoutSeconds: clampInt(config.actionTimeoutSeconds ?? 120, 5),
   };
 }
 
@@ -131,81 +144,104 @@ function parseConfigBool(value) {
 
 function renderOnlineSnapshot(snapshot) {
   const { room, you, game } = snapshot;
+  const RST = "\x1b[0m", GRN = "\x1b[32m", YLW = "\x1b[33m", RED = "\x1b[31m", CYN = "\x1b[36m", BLD = "\x1b[1m";
   const divider = "=".repeat(56);
   const section = "-".repeat(56);
   const roomStatus = game?.handFinished ? "手牌结束" : room.status === "waiting" ? "等待中" : "牌局中";
-  const lines = ["", divider, `房间：${room.roomCode}`, `状态：${roomStatus}`];
-  lines.push(`配置：${room.config.playerCount} 人桌`);
-  lines.push(`筹码：${room.config.initialStack}`);
-  lines.push(`盲注：${room.config.smallBlind}/${room.config.bigBlind}`);
-  lines.push(`水下：${room.config.underwater ? "开" : "关"}`);
-  lines.push(`超时：${room.config.actionTimeoutSeconds} 秒`);
-  lines.push(section, "座位：");
-  for (const seat of room.seats) {
-    if (seat.type === "empty") {
-      lines.push(`座 ${seat.index}：空`);
-      continue;
-    }
-    const host = seat.isHost ? "（房主）" : "";
-    const youLabel = seat.isYou ? "（你）" : "";
-    const type = seat.type === "bot" ? `AI ${seat.botDifficulty}` : "真人";
-    const online = seat.type === "bot" ? "在线" : seat.connected ? "在线" : "离线";
-    lines.push(`座 ${seat.index}：${seat.displayName}${youLabel}${host}`);
-    lines.push(`  类型：${type} | ${online} | 筹码 ${seat.stack}`);
-  }
+  const lines = [
+    "",
+    divider,
+    `房间：${room.roomCode}  ${roomStatus}  ${room.config.playerCount}人  ${room.config.initialStack}筹码  盲${room.config.smallBlind}/${room.config.bigBlind}`,
+  ];
   if (!game) {
-    lines.push(section);
+    lines.push(section, "座位：");
+    for (const seat of room.seats) {
+      if (seat.type === "empty") {
+        lines.push(`  ${seat.index}. 空`);
+        continue;
+      }
+      const tags = [];
+      if (seat.isHost) tags.push("房主");
+      if (seat.isYou) tags.push("你");
+      const tagStr = tags.length ? `(${tags.join(" ")})` : "";
+      const type = seat.type === "bot" ? `AI${seat.botDifficulty}` : "真人";
+      const online = seat.type === "bot" ? "" : seat.connected ? "在线" : "离线";
+      const uw = seat.underwaterHands ? `(-${seat.underwaterHands}*)` : "";
+      lines.push(`  ${seat.index}. ${seat.displayName}${tagStr}${uw}  ${type}  ${online}  $${seat.stack}`);
+    }
+    lines.push("");
     if (you?.isHost) {
-      lines.push("房主命令：");
-      lines.push("  start");
-      lines.push("  bot add [座位] [名称] [难度]");
-      lines.push("  bot remove 座位");
-      lines.push("  bot config 座位 名称 难度");
+      lines.push("房主：s | bot add 座 名 难度 | bot remove 座");
     } else {
-      lines.push("玩家命令：");
-      lines.push("  sit 位置");
-      lines.push("  leave");
-      lines.push("  s");
-      lines.push("  q");
+      lines.push("玩家：sit N | leave | s | q");
     }
     lines.push(divider);
     return lines.join("\n");
   }
-  lines.push(section, `第 ${game.handNo} 手`, `阶段：${game.stage}`, `轮到：${game.actionPlayerName ?? "无"}`);
-  lines.push(`公共牌：${formatCardDtos(game.board)}`);
   const hero = game.players.find((player) => player.seatIndex === you?.seatIndex);
-  if (hero?.hole) lines.push(`你的手牌：${formatCardDtos(hero.hole)}`);
-  lines.push(`底池：${game.pot}`, `当前最高下注：${game.currentBet}`);
+  const handInfo = hero?.hole ? `${GRN}手牌：${formatCardDtos(hero.hole)}${RST}` : "";
+  const boardInfo = game.board.length ? `${GRN}公牌：${formatCardDtos(game.board)}${RST}` : "";
+  const turnInfo =
+    game.actionSeatIndex === you?.seatIndex
+      ? `${YLW}轮到：${game.actionPlayerName}${RST}`
+      : `轮到：${game.actionPlayerName ?? "无"}`;
+  lines.push("");
+  lines.push(`第${game.handNo}手  ${game.stage}  ${turnInfo}  底池：${game.pot}  最高：${game.currentBet}`);
+  if (boardInfo) lines.push(boardInfo);
+  if (handInfo) lines.push(handInfo);
   lines.push(section, "牌桌：");
+  lines.push("  #  Name            Pos       Stack/Bet    Status");
   for (const player of game.players) {
-    const hole = player.hole && (player.seatIndex === you?.seatIndex || game.lastHandResult?.revealed?.[player.seatIndex]) ? ` 手牌 ${formatCardDtos(player.hole)}` : "";
-    const mark = player.marks ? ` | ${player.marks}` : "";
-    const hand = hole ? ` |${hole}` : "";
-    const handName = player.handName ? ` | ${player.handName}` : "";
-    lines.push(`座 ${player.seatIndex}：${player.name}${mark}`);
-    lines.push(`  位置：${player.position || "-"}`);
-    lines.push(`  筹码：${player.stack} | 本轮：${player.currentBet}`);
-    lines.push(`  状态：${player.status}${hand}${handName}`);
+    const holeStr =
+      player.hole && (player.seatIndex === you?.seatIndex || game.lastHandResult?.revealed?.[player.seatIndex])
+        ? `  ${formatCardDtos(player.hole)}`
+        : "";
+    const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
+    const isMe = player.seatIndex === you?.seatIndex;
+    const nameStr = (player.name + uw).padEnd(18);
+    const name = isMe ? `${BLD}${GRN}${nameStr}${RST}` : nameStr;
+    const pos = (player.position || "-").padEnd(8);
+    const stackBet = `$${player.stack}/$${player.currentBet}`.padEnd(11);
+    lines.push(`  ${player.seatIndex}. ${name} ${pos} ${stackBet} ${player.status}${holeStr}`);
   }
-  lines.push(section, "最近行动：", ...(game.logs.length ? game.logs : ["无"]));
+  lines.push("");
+  lines.push(section, "最近行动：");
+  const showLogs = game.logs && game.logs.length ? game.logs : ["无"];
+  lines.push(...showLogs.map((line) => `  ${line.replace(/加注/g, `${RED}加注${RST}`).replace(/全下/g, `${RED}全下${RST}`)}`));
   if (game.handFinished) {
-    lines.push(section, `本手结束：${game.lastHandResult?.summary ?? ""}`);
-    lines.push(you?.isHost ? "房间仍在。输入 下一手/next 开始下一手。" : "房间仍在，等待房主开始下一手。");
+    lines.push("");
+    lines.push(section, "亮牌：");
+    const winners = new Set(game.lastHandResult?.winners ?? []);
+    for (const player of game.players) {
+      const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
+      const isWinner = winners.has(player.seatIndex);
+      const winLabel = isWinner ? `${RED}(赢家)${RST}` : "";
+      const name = (player.name + uw + winLabel).padEnd(18);
+      if (player.hole) {
+        const handName = player.handName ? `  (${player.handName})` : "";
+        lines.push(`  ${player.seatIndex}. ${name} ${formatCardDtos(player.hole)}${handName}`);
+      } else {
+        lines.push(`  ${player.seatIndex}. ${name} --`);
+      }
+    }
+    lines.push("");
+    lines.push(`结果：${game.lastHandResult?.summary ?? ""}`);
+    lines.push(you?.isHost ? "n/next 下一手 | st 状态 | q 退出" : "等待房主开始下一手...");
   } else if (game.actionSeatIndex === you?.seatIndex) {
-    lines.push(section, "轮到你行动。可输入：");
-    if (hero?.hole) lines.push(`你的手牌：${formatCardDtos(hero.hole)}`);
-    for (const action of game.legalActions) lines.push(`  ${action.label}`);
-    lines.push("  状态/s");
-    lines.push("  退出/q");
+    lines.push("");
+    const actionLabels = game.legalActions.map((action) => action.label).concat(["状态/st", "退出/q"]).join(" ");
+    if (hero?.hole) lines.push(`${GRN}你的手牌：${formatCardDtos(hero.hole)}${RST}`);
+    lines.push(`${YLW}${actionLabels}${RST}`);
   } else {
-    lines.push(section, `等待 ${game.actionPlayerName} 行动...`);
+    lines.push("");
+    lines.push(`等待 ${CYN}${game.actionPlayerName}${RST} 行动...`);
   }
   lines.push(divider);
   return lines.join("\n");
 }
 
 function formatCardDtos(cards) {
-  return cards?.length ? cards.map((card) => `${RANK_NAMES[card.rank]}${SUIT_ICONS[card.suit]}${SUIT_NAMES[card.suit]}`).join(" ") : "无";
+  return cards?.length ? cards.map((card) => `${RANK_NAMES[card.rank]}${SUIT_NAMES[card.suit]}`).join(" ") : "无";
 }
 
 module.exports = {

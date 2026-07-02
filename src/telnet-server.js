@@ -1,4 +1,5 @@
 const net = require('node:net');
+const iconv = require("iconv-lite");
 const { actionFromDto, decodeTelnetInput, normalizeDifficulty, parseConfigBool, parseConfigInt, parseOnlineClientCommand, randomCode, sendSnapshot, sendText } = require('./online-protocol');
 const { RoomManager } = require('./room-manager');
 
@@ -35,9 +36,37 @@ class TelnetPokerServer {
 
   handleSocket(socket) {
     socket._pokerfaceTextClient = true;
-    socket.write(Buffer.from([255, 252, 1, 255, 251, 3]));
-    socket.write("欢迎来到 Pokerface 纯终端联机桌。\r\n");
-    socket.write("本模式支持 nc/telnet，朋友不需要拉代码。\r\n\r\n");
+    socket._gbkEncoding = false;
+    socket._welcomeSent = false;
+    socket.write(Buffer.from([255, 251, 1, 255, 251, 3]));
+
+    const sendWelcome = () => {
+      if (socket._welcomeSent) return;
+      socket._welcomeSent = true;
+      const actualIsHost = this.manager.rooms.size === 0 && !this.pendingHost;
+      if (this.manager.rooms.size === 0 && this.pendingHost) {
+        sendText(socket, "房主正在创建房间，请稍后重新连接。");
+        socket.end();
+        return;
+      }
+      sendText(socket, "欢迎来到 Pokerface 纯终端联机桌。");
+      sendText(socket, "");
+      if (actualIsHost) {
+        this.pendingHost = true;
+        state.isHost = true;
+        sendText(socket, "你是第一个连接的玩家，将成为房主。");
+        this.prompt(state, "昵称（默认 房主）：");
+      } else {
+        state.isHost = false;
+        this.prompt(state, "昵称（默认 玩家）：");
+      }
+      if (state._preWelcomeBuffer && state._preWelcomeBuffer.length) {
+        for (const buffered of state._preWelcomeBuffer) {
+          this.handleData(state, buffered);
+        }
+        state._preWelcomeBuffer = [];
+      }
+    };
 
     const state = {
       socket,
@@ -49,33 +78,57 @@ class TelnetPokerServer {
       isHost: this.manager.rooms.size === 0 && !this.pendingHost,
       config: {},
     };
-    if (this.manager.rooms.size === 0 && this.pendingHost) {
-      socket.write("房主正在创建房间，请稍后重新连接。\r\n");
-      socket.end();
-      return;
-    }
-    if (state.isHost) {
-      this.pendingHost = true;
-      socket.write("你是第一个连接的玩家，将成为房主。\r\n");
-      this.prompt(state, "昵称（默认 房主）：");
-    } else {
-      this.prompt(state, "昵称（默认 玩家）：");
-    }
 
-    socket.on("data", (chunk) => this.handleData(state, chunk));
-    socket.on("close", () => this.disconnect(state));
-    socket.on("error", () => this.disconnect(state));
+    const welcomeTimer = setTimeout(() => sendWelcome(), 300);
+
+    socket.on("data", (chunk) => {
+      if (!socket._welcomeSent && chunk.length >= 3 && chunk[0] === 255 && [251, 252, 253, 254].includes(chunk[1])) {
+        socket._gbkEncoding = true;
+        clearTimeout(welcomeTimer);
+        sendWelcome();
+        return;
+      }
+      if (!socket._welcomeSent) {
+        if (!state._preWelcomeBuffer) state._preWelcomeBuffer = [];
+        state._preWelcomeBuffer.push(chunk);
+        return;
+      }
+      this.handleData(state, chunk);
+    });
+    socket.on("close", () => {
+      clearTimeout(welcomeTimer);
+      this.disconnect(state);
+    });
+    socket.on("error", () => {});
   }
 
   handleData(state, chunk) {
     const text = decodeTelnetInput(chunk);
+    if (text === null) {
+      state.socket._gbkEncoding = true;
+      return;
+    }
     if (!text) return;
+    const echoBytes = [];
+    for (const ch of text) {
+      if (ch === "\x7f" || ch === "\b") {
+        echoBytes.push(0x08, 0x20, 0x08);
+      } else if (ch === "\r" || ch === "\n") {
+        echoBytes.push(0x0d, 0x0a);
+      } else if (ch >= " ") {
+        if (state.socket._gbkEncoding) {
+          echoBytes.push(...iconv.encode(ch, "gbk"));
+        } else {
+          echoBytes.push(...Buffer.from(ch, "utf8"));
+        }
+      }
+    }
+    if (echoBytes.length) state.socket.write(Buffer.from(echoBytes));
     state.buffer += text.replace(/\r/g, "");
     const lines = state.buffer.split("\n");
     state.buffer = lines.pop();
     for (const line of lines) {
       const trimmed = line.trim();
-      if (trimmed) state.socket.write(`${trimmed}\r\n`);
       this.handleLine(state, trimmed);
     }
   }
@@ -85,25 +138,38 @@ class TelnetPokerServer {
       if (state.step === "name") {
         state.displayName = text || (state.isHost ? "房主" : "玩家");
         if (state.isHost) {
-          state.step = "playerCount";
-          this.prompt(state, "总座位数 2-9（默认 6）：");
+          state.step = "roomCode";
+          this.prompt(state, "设置房间号（回车自动生成）：");
         } else {
-          const room = [...this.manager.rooms.values()][0];
-          if (!room) throw new Error("房间还不存在，请稍后重新连接");
-          state.room = this.manager.joinRoom({
-            roomCode: room.roomCode,
-            sessionId: state.sessionId,
-            displayName: state.displayName,
-            socket: state.socket,
-          });
-          state.step = "command";
-          sendText(state.socket, `已加入房间 ${state.room.roomCode}。输入 sit 位置 入座。`);
-          state.room.broadcast();
+          state.step = "joinRoomCode";
+          this.prompt(state, "输入房间号：");
         }
         return;
       }
 
       if (this.handleHostConfigLine(state, text)) return;
+
+      if (state.step === "joinRoomCode") {
+        if (!text) {
+          this.prompt(state, "输入房间号：");
+        } else {
+          const roomCode = text.trim();
+          const room = this.manager.rooms.get(roomCode);
+          if (!room) throw new Error(`房间 ${roomCode} 不存在`);
+          state.room = this.manager.joinRoom({
+            roomCode,
+            sessionId: state.sessionId,
+            displayName: state.displayName,
+            socket: state.socket,
+          });
+          state.step = "command";
+          const cfg = state.room.config;
+          sendText(state.socket, `已加入房间 ${state.room.roomCode}：${cfg.playerCount}人桌  ${cfg.initialStack}筹码  盲${cfg.smallBlind}/${cfg.bigBlind}  ${cfg.actionTimeoutSeconds}秒超时`);
+          sendText(state.socket, "输入 sit 位置 入座，使用 s 查看状态。");
+          state.room.broadcast();
+        }
+        return;
+      }
 
       if (state.step === "command") {
         if (!text) {
@@ -126,14 +192,21 @@ class TelnetPokerServer {
   handleHostConfigLine(state, text) {
     if (!state.isHost) return false;
     const defaults = {
+      roomCode: "",
       playerCount: 6,
       initialStack: 1000,
       smallBlind: 5,
       bigBlind: 10,
       underwater: true,
-      actionTimeoutSeconds: 60,
+      actionTimeoutSeconds: 120,
       difficulty: "普通",
     };
+    if (state.step === "roomCode") {
+      state.config.roomCode = (text || defaults.roomCode).trim();
+      state.step = "playerCount";
+      this.prompt(state, "总座位数 2-9（默认 6）：");
+      return true;
+    }
     if (state.step === "playerCount") {
       state.config.playerCount = text ? parseConfigInt(text, 2, 9, "总座位数") : defaults.playerCount;
       state.step = "initialStack";
@@ -162,7 +235,7 @@ class TelnetPokerServer {
     if (state.step === "underwater") {
       state.config.underwater = text ? parseConfigBool(text) : defaults.underwater;
       state.step = "actionTimeoutSeconds";
-      this.prompt(state, "行动超时秒数（默认 60）：");
+      this.prompt(state, "行动超时秒数（默认 120）：");
       return true;
     }
     if (state.step === "actionTimeoutSeconds") {
@@ -185,7 +258,6 @@ class TelnetPokerServer {
       this.pendingHost = false;
       sendText(state.socket, `房间已创建：${room.roomCode}`);
       sendText(state.socket, `朋友连接命令：nc 服务器IP ${this.port}`);
-      sendText(state.socket, "输入 sit 位置 入座，输入 bot add 位置 名字 难度 添加AI，输入 start 开局。");
       room.broadcast();
       return true;
     }
@@ -216,12 +288,23 @@ class TelnetPokerServer {
     if (state.isHost && state.step !== "command") this.pendingHost = false;
     if (state.room) {
       state.room.disconnectSession(state.sessionId);
-      state.room.broadcast();
+      if (state.room.clients.size === 0) {
+        this.manager.removeRoom(state.room.roomCode);
+        this.pendingHost = false;
+      } else {
+        state.room.broadcast();
+      }
     }
   }
 
   prompt(state, text) {
-    if (text) state.socket.write(text);
+    if (!text) return;
+    const out = text.replace(/\n/g, "\r\n");
+    if (state.socket._gbkEncoding) {
+      state.socket.write(iconv.encode(out, "gbk"));
+    } else {
+      state.socket.write(out);
+    }
   }
 }
 

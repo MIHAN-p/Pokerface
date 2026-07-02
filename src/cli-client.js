@@ -146,7 +146,7 @@ async function askRoomConfig(rl) {
   const smallBlind = await askInt(rl, "小盲注", 5, 1);
   const bigBlind = await askInt(rl, "大盲注", Math.max(10, smallBlind * 2), smallBlind + 1);
   const underwater = await askBool(rl, "开启水下模式", true);
-  const actionTimeoutSeconds = await askInt(rl, "行动超时秒数", 60, 5);
+  const actionTimeoutSeconds = await askInt(rl, "行动超时秒数", 120, 5);
   const difficulty = await askDifficulty(rl);
   return { playerCount, initialStack, smallBlind, bigBlind, underwater, actionTimeoutSeconds, difficulty };
 }

@@ -1,4 +1,4 @@
-const { RANK_NAMES, SUITS, SUIT_ICONS, SUIT_NAMES } = require('./constants');
+const { RANK_NAMES, SUITS, SUIT_NAMES } = require('./constants');
 const { Random } = require('./random');
 
 class Card {
@@ -12,7 +12,7 @@ class Card {
   }
 
   text() {
-    return `${RANK_NAMES[this.rank]}${SUIT_ICONS[this.suit]}${SUIT_NAMES[this.suit]}`;
+    return `${RANK_NAMES[this.rank]}${SUIT_NAMES[this.suit]}`;
   }
 }
 

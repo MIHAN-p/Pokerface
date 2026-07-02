@@ -187,10 +187,17 @@ class OnlineGameEngine extends GameEngine {
     if (active.length === 1) {
       active[0].player.stack += this.pot;
       this.logs.push(`${active[0].player.name} 赢得底池 ${this.pot}`);
+      const revealed = {};
+      if (active[0].player.hole && active[0].player.hole.length > 1) {
+        revealed[active[0].player.seatIndex] = {
+          cards: active[0].player.hole.map(cardToDto),
+          handName: null,
+        };
+      }
       this.lastHandResult = {
         winners: [active[0].player.seatIndex],
         pot: finalPot,
-        revealed: {},
+        revealed,
         summary: `${active[0].player.name} 获胜，赢得 ${finalPot}`,
       };
       this.pot = 0;
@@ -238,6 +245,8 @@ class OnlineGameEngine extends GameEngine {
         seatIndex: player.seatIndex,
         name: player.name,
         type: player.isHuman ? "human" : "bot",
+        underwaterHands: player.underwaterHands,
+        underwaterDebt: player.underwaterDebt,
         stack: player.stack,
         currentBet: player.currentBet,
         totalBet: player.totalBet,
