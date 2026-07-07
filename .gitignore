@@ -8,3 +8,6 @@ pnpm-debug.log*
 .DS_Store
 PRD*.md
 .pokerface-sessions.json
+package-lock.json
+poker-server.js
+poker-telnet.ps1

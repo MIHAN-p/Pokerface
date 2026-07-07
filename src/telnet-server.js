@@ -2,7 +2,8 @@ const net = require('node:net');
 const iconv = require("iconv-lite");
 const { actionFromDto, decodeTelnetInput, normalizeDifficulty, parseConfigBool, parseConfigInt, parseOnlineClientCommand, randomCode, sendSnapshot, sendText } = require('./online-protocol');
 const { RoomManager } = require('./room-manager');
-const { Action, ActionKind } = require('./actions');
+const { Action } = require('./actions');
+const { ActionKind } = require('./constants');
 const YLW = "\x1b[33m", RST = "\x1b[0m";
 
 class TelnetPokerServer {
