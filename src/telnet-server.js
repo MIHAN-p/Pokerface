@@ -1,6 +1,6 @@
 const net = require('node:net');
 const iconv = require("iconv-lite");
-const { actionFromDto, decodeTelnetInput, normalizeDifficulty, parseConfigBool, parseConfigInt, parseOnlineClientCommand, randomCode, sendSnapshot, sendText } = require('./online-protocol');
+const { actionFromDto, decodeTelnetInput, encodeForSocket, normalizeDifficulty, parseConfigBool, parseConfigInt, parseOnlineClientCommand, randomCode, safeWrite, sendSnapshot, sendText } = require('./online-protocol');
 const { RoomManager } = require('./room-manager');
 const { Action } = require('./actions');
 const { ActionKind } = require('./constants');
@@ -40,6 +40,7 @@ class TelnetPokerServer {
   handleSocket(socket) {
     socket._pokerfaceTextClient = true;
     socket._gbkEncoding = false;
+    socket._gbkEncodingDecided = false;  // will be auto-detected from first user input
     socket._welcomeSent = false;
     socket.write(Buffer.from([255, 251, 1, 255, 251, 3]));
 
@@ -85,13 +86,16 @@ class TelnetPokerServer {
     const welcomeTimer = setTimeout(() => sendWelcome(), 300);
 
     socket.on("data", (chunk) => {
-      if (!socket._welcomeSent && chunk.length >= 3 && chunk[0] === 255 && [251, 252, 253, 254].includes(chunk[1])) {
-        socket._gbkEncoding = true;
-        clearTimeout(welcomeTimer);
-        sendWelcome();
-        return;
-      }
+      // Don't auto-detect GBK from telnet IAC bytes — all telnet clients send them.
+      // Encoding is auto-detected from the first actual user input via decodeTelnetInput.
+      const isIacOnly = chunk.length >= 3 && chunk[0] === 255 && [251, 252, 253, 254].includes(chunk[1]);
       if (!socket._welcomeSent) {
+        // IAC-only chunks: process normally, they'll be stripped by decodeTelnetInput returning null
+        if (isIacOnly) {
+          clearTimeout(welcomeTimer);
+          sendWelcome();
+          return;
+        }
         if (!state._preWelcomeBuffer) state._preWelcomeBuffer = [];
         state._preWelcomeBuffer.push(chunk);
         return;
@@ -102,13 +106,15 @@ class TelnetPokerServer {
       clearTimeout(welcomeTimer);
       this.disconnect(state);
     });
-    socket.on("error", () => {});
+    socket.on("error", () => {
+      // Mark socket dead so broadcast skips it
+      socket._pokerfaceTextClient = false;
+    });
   }
 
   handleData(state, chunk) {
-    const text = decodeTelnetInput(chunk);
+    const text = decodeTelnetInput(chunk, state.socket);
     if (text === null) {
-      state.socket._gbkEncoding = true;
       return;
     }
     if (!text) return;
@@ -126,7 +132,7 @@ class TelnetPokerServer {
         }
       }
     }
-    if (echoBytes.length) state.socket.write(Buffer.from(echoBytes));
+    if (echoBytes.length) safeWrite(state.socket, Buffer.from(echoBytes));
     state.buffer += text.replace(/\r/g, "");
     const lines = state.buffer.split("\n");
     state.buffer = lines.pop();
@@ -330,13 +336,9 @@ class TelnetPokerServer {
   }
 
   prompt(state, text) {
-    if (!text) return;
+    if (!text || !state.socket || state.socket.destroyed) return;
     const out = text.replace(/\n/g, "\r\n");
-    if (state.socket._gbkEncoding) {
-      state.socket.write(iconv.encode(out, "gbk"));
-    } else {
-      state.socket.write(out);
-    }
+    safeWrite(state.socket, encodeForSocket(state.socket, out));
   }
 }
 

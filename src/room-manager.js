@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const { ActionKind } = require('./constants');
 const { Action } = require('./actions');
 const { OnlineGameEngine } = require('./online-game-engine');
-const { normalizeDifficulty, normalizeRoomConfig, randomCode, sendSnapshot } = require('./online-protocol');
+const { normalizeDifficulty, normalizeRoomConfig, purgeDeadSockets, randomCode, sendSnapshot } = require('./online-protocol');
 
 class PokerRoom {
   constructor({ roomCode, hostSessionId, config }) {
@@ -303,6 +303,9 @@ class PokerRoom {
 
   broadcast() {
     this.scheduleActionTimeout();
+    // Purge dead/disconnected sockets before broadcasting to prevent
+    // one stuck client from blocking everyone else
+    purgeDeadSockets(this);
     for (const [sessionId, socket] of this.clients) {
       sendSnapshot(socket, this.snapshotFor(sessionId));
     }

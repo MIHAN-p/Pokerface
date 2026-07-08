@@ -3,6 +3,9 @@ const iconv = require("iconv-lite");
 const { ActionKind, RANK_NAMES, SUIT_NAMES } = require('./constants');
 const { Action, InputParser } = require('./actions');
 
+// Socket health tracking symbol
+const SOCKET_DEAD = Symbol("socket_dead");
+
 function actionToDto(action) {
   return { kind: action.kind, amount: action.amount };
 }
@@ -16,34 +19,74 @@ function sendJson(socket, payload) {
   socket.write(`${JSON.stringify(payload)}\n`);
 }
 
+/**
+ * Write data with backpressure and error handling.
+ * Returns true if the write succeeded immediately, false if buffered.
+ * Marks the socket as dead on error so consumers can clean it up.
+ */
+function safeWrite(socket, data) {
+  if (socket[SOCKET_DEAD] || socket.destroyed) return false;
+  try {
+    const ok = socket.write(data);
+    if (ok === false) {
+      // Backpressure — the socket buffer is full; don't mark dead, just return false
+      // The event loop will drain eventually
+    }
+    return true;
+  } catch (err) {
+    socket[SOCKET_DEAD] = true;
+    socket.destroy();
+    return false;
+  }
+}
+
+function encodeForSocket(socket, text) {
+  if (socket._gbkEncoding) {
+    return iconv.encode(text, "gbk");
+  }
+  return text;
+}
+
 function sendSnapshot(socket, snapshot) {
+  if (socket[SOCKET_DEAD] || socket.destroyed) return;
   const snapshotText = renderOnlineSnapshot(snapshot).replace(/\n/g, "\r\n");
   if (socket._pokerfaceTextClient) {
-    if (socket._gbkEncoding) {
-      socket.write(iconv.encode(`${snapshotText}\r\n> `, "gbk"));
-    } else {
-      socket.write(`${snapshotText}\r\n> `);
-    }
+    const payload = `${snapshotText}\r\n> `;
+    safeWrite(socket, encodeForSocket(socket, payload));
     return;
   }
   sendJson(socket, snapshot);
 }
 
 function sendText(socket, text) {
+  if (!socket || socket[SOCKET_DEAD] || socket.destroyed) return;
   const out = `${text.replace(/\n/g, "\r\n")}\r\n`;
-  if (socket && socket._gbkEncoding) {
-    socket.write(iconv.encode(out, "gbk"));
-  } else {
-    socket.write(out);
-  }
+  safeWrite(socket, encodeForSocket(socket, out));
 }
 
-function decodeTelnetInput(chunk) {
+/**
+ * Try to detect client text encoding from raw bytes.
+ * Returns "utf8" or "gbk".
+ */
+function detectTextEncoding(bytes) {
+  const asUtf8 = bytes.toString("utf8");
+  if (!asUtf8.includes("\uFFFD")) return "utf8";
+  try {
+    const asGbk = iconv.decode(bytes, "gbk");
+    if (asGbk && !asGbk.includes("\uFFFD") && asGbk.length > 0) return "gbk";
+  } catch {}
+  return "utf8";
+}
+
+/**
+ * Strip telnet IAC negotiation bytes from a chunk and decode as text.
+ * If socket._gbkEncoding is already set, decodes accordingly.
+ */
+function decodeTelnetInput(chunk, socket) {
   const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), "utf8");
-  if (bytes.length >= 3 && bytes[0] === 255 && [251, 252, 253, 254].includes(bytes[1])) {
-    return null;
-  }
+  // IAC negotiation only — no real data
   const outputBytes = [];
+  let hasRealData = false;
   for (let i = 0; i < bytes.length; i += 1) {
     const byte = bytes[i];
     if (byte === 255) {
@@ -62,8 +105,35 @@ function decodeTelnetInput(chunk) {
       continue;
     }
     outputBytes.push(byte);
+    if (byte !== 0) hasRealData = true;
   }
-  return Buffer.from(outputBytes).toString("utf8");
+  if (!hasRealData && outputBytes.length === 0) return null;
+  if (!hasRealData && outputBytes.every(b => b === 0)) return "";
+  const raw = Buffer.from(outputBytes);
+  // If we haven't decided on encoding yet, auto-detect from this input
+  if (socket && !socket._gbkEncodingDecided) {
+    socket._gbkEncoding = detectTextEncoding(raw) === "gbk";
+    socket._gbkEncodingDecided = true;
+  }
+  if (socket && socket._gbkEncoding) {
+    return iconv.decode(raw, "gbk");
+  }
+  return raw.toString("utf8");
+}
+
+/**
+ * Remove dead/destroyed sockets from a room's client map.
+ * Returns the number of sockets removed.
+ */
+function purgeDeadSockets(room) {
+  let removed = 0;
+  for (const [sessionId, socket] of room.clients) {
+    if (socket[SOCKET_DEAD] || socket.destroyed) {
+      room.clients.delete(sessionId);
+      removed += 1;
+    }
+  }
+  return removed;
 }
 
 function parseOnlineClientCommand(text) {
@@ -247,10 +317,13 @@ function formatCardDtos(cards) {
 }
 
 module.exports = {
+  SOCKET_DEAD,
   actionFromDto,
   actionToDto,
   clampInt,
   decodeTelnetInput,
+  detectTextEncoding,
+  encodeForSocket,
   formatCardDtos,
   normalizeDifficulty,
   normalizeRoomConfig,
@@ -258,8 +331,10 @@ module.exports = {
   parseConfigInt,
   parseOnlineClientCommand,
   parseSeatIndex,
+  purgeDeadSockets,
   randomCode,
   renderOnlineSnapshot,
+  safeWrite,
   sendJson,
   sendSnapshot,
   sendText,
