@@ -39,9 +39,10 @@ class TelnetPokerServer {
 
   handleSocket(socket) {
     socket._pokerfaceTextClient = true;
-    socket._gbkEncoding = false;
-    socket._gbkEncodingDecided = false;  // will be auto-detected from first user input
+    socket._gbkEncoding = true;  // 默认 GBK（Windows telnet），无 IAC 时切 UTF-8
+    socket._gbkEncodingDecided = false;
     socket._welcomeSent = false;
+    socket._receivedIac = false;
     socket.write(Buffer.from([255, 251, 1, 255, 251, 3]));
 
     const sendWelcome = () => {
@@ -83,15 +84,18 @@ class TelnetPokerServer {
       config: {},
     };
 
-    const welcomeTimer = setTimeout(() => sendWelcome(), 300);
+    const welcomeTimer = setTimeout(() => {
+      // 无 IAC → nc/Mac → UTF-8
+      if (!socket._receivedIac) socket._gbkEncoding = false;
+      sendWelcome();
+    }, 300);
 
     socket.on("data", (chunk) => {
-      // Don't auto-detect GBK from telnet IAC bytes — all telnet clients send them.
-      // Encoding is auto-detected from the first actual user input via decodeTelnetInput.
       const isIacOnly = chunk.length >= 3 && chunk[0] === 255 && [251, 252, 253, 254].includes(chunk[1]);
       if (!socket._welcomeSent) {
-        // IAC-only chunks: process normally, they'll be stripped by decodeTelnetInput returning null
         if (isIacOnly) {
+          socket._receivedIac = true;
+          socket._gbkEncoding = true;
           clearTimeout(welcomeTimer);
           sendWelcome();
           return;

@@ -110,10 +110,14 @@ function decodeTelnetInput(chunk, socket) {
   if (!hasRealData && outputBytes.length === 0) return null;
   if (!hasRealData && outputBytes.every(b => b === 0)) return "";
   const raw = Buffer.from(outputBytes);
-  // If we haven't decided on encoding yet, auto-detect from this input
+  // Auto-detect encoding only from non-ASCII input (bytes > 127).
+  // Pure ASCII is the same in UTF-8 and GBK, so it can't tell us which encoding the client uses.
   if (socket && !socket._gbkEncodingDecided) {
-    socket._gbkEncoding = detectTextEncoding(raw) === "gbk";
-    socket._gbkEncodingDecided = true;
+    const hasNonAscii = raw.some(b => b > 127);
+    if (hasNonAscii) {
+      socket._gbkEncoding = detectTextEncoding(raw) === "gbk";
+      socket._gbkEncodingDecided = true;
+    }
   }
   if (socket && socket._gbkEncoding) {
     return iconv.decode(raw, "gbk");
