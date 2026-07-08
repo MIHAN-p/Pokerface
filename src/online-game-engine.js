@@ -232,6 +232,14 @@ class OnlineGameEngine extends GameEngine {
 
   publicSnapshot(viewerSeatIndex = null) {
     const actionPlayer = this.actionIndex === null ? null : this.players[this.actionIndex];
+    // 计算 viewer（hero）的实时牌型
+    let heroHandName = null;
+    if (viewerSeatIndex !== null) {
+      const hero = this.players.find((p) => p.seatIndex === viewerSeatIndex);
+      if (hero?.hole?.length >= 2 && this.board.length >= 3) {
+        heroHandName = HandEvaluator.best([...hero.hole, ...this.board]).name();
+      }
+    }
     return {
       handNo: this.handNo,
       stage: this.stage,
@@ -243,6 +251,7 @@ class OnlineGameEngine extends GameEngine {
       logs: this.logs.slice(-8),
       handFinished: this.handFinished,
       lastHandResult: this.lastHandResult,
+      heroHandName,
       players: this.players.map((player, idx) => ({
         seatIndex: player.seatIndex,
         name: player.name,

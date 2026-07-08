@@ -27,6 +27,7 @@ class PokerRoom {
     this.engine = null;
     this.processedActions = new Set();
     this.actionTimer = null;
+    this.actionDeadline = null;
     this.createdAt = new Date();
     this.updatedAt = new Date();
   }
@@ -66,6 +67,21 @@ class PokerRoom {
       const seat = this.getSeat(session.seatIndex);
       if (seat?.type === "human") seat.connected = false;
     }
+  }
+
+  /**
+   * 检查房间中是否还有已连接的真人玩家（入座或旁观）
+   */
+  hasConnectedHumans() {
+    // 检查入座的真人
+    for (const seat of this.seats) {
+      if (seat.type === "human" && seat.connected) return true;
+    }
+    // 检查仍连接的 session（含旁观者）
+    for (const session of this.sessions.values()) {
+      if (this.clients.has(session.sessionId)) return true;
+    }
+    return false;
   }
 
   sit(sessionId, seatIndex) {
@@ -281,6 +297,7 @@ class PokerRoom {
           }
         : null,
       game: this.engine?.publicSnapshot(viewerSeatIndex) ?? null,
+      actionDeadline: this.actionDeadline ?? null,
     };
   }
 
@@ -296,9 +313,11 @@ class PokerRoom {
       clearTimeout(this.actionTimer);
       this.actionTimer = null;
     }
+    this.actionDeadline = null;
     if (!this.engine || this.engine.handFinished || this.engine.actionIndex === null) return;
     const player = this.engine.players[this.engine.actionIndex];
     if (!player?.isHuman) return;
+    this.actionDeadline = Date.now() + this.config.actionTimeoutSeconds * 1000;
     this.actionTimer = setTimeout(() => {
       try {
         if (!this.engine || this.engine.handFinished || this.engine.players[this.engine.actionIndex]?.seatIndex !== player.seatIndex) return;

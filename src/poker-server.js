@@ -3,10 +3,10 @@ const { actionFromDto, randomCode, sendJson } = require('./online-protocol');
 const { RoomManager } = require('./room-manager');
 
 class PokerServer {
-  constructor({ host = "0.0.0.0", port = 3000, adminToken, allowMultipleRooms = false } = {}) {
+  constructor({ host = "0.0.0.0", port = 3000, adminToken, allowMultipleRooms = false, manager } = {}) {
     this.host = host;
     this.port = port;
-    this.manager = new RoomManager({ adminToken, allowMultipleRooms });
+    this.manager = manager ?? new RoomManager({ adminToken, allowMultipleRooms });
     this.server = net.createServer((socket) => this.handleSocket(socket));
     this.socketRooms = new Map();
   }
@@ -105,6 +105,9 @@ class PokerServer {
     } else if (msg.type === "next_hand") {
       room.nextHand(sessionId);
       console.log(`[${new Date().toISOString()}] 下一手 房间 ${room.roomCode}`);
+    } else if (msg.type === "reset_game") {
+      room.resetGame(sessionId);
+      console.log(`[${new Date().toISOString()}] 重置牌局 房间 ${room.roomCode}`);
     } else if (msg.type === "player_action") {
       room.applyPlayerAction(sessionId, actionFromDto(msg.action), msg.clientActionId);
       if (room.engine?.handFinished) console.log(`[${new Date().toISOString()}] 单手结束 房间 ${room.roomCode}`);

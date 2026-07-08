@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Pokerface 联机版 - 交互设计稿</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #08110d;
+  --bg-soft: #101812;
+  --panel: #141f19;
+  --panel-2: #1a2820;
+  --panel-3: #223329;
+  --text: #f3f8f3;
+  --muted: #9aaca2;
+  --muted-2: #6f8378;
+  --line: #2b4035;
+  --line-soft: rgba(255,255,255,.08);
+  --green: #38c172;
+  --green-2: #1e8f54;
+  --gold: #f4c95d;
+  --blue: #5b9def;
+  --red: #ff6b6b;
+  --felt: radial-gradient(ellipse at center, #277348 0%, #155131 54%, #0a2e1d 100%);
+  --shadow: 0 22px 70px rgba(0,0,0,.42);
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 22% 6%, rgba(56,193,114,.16), transparent 28%),
+    linear-gradient(145deg, #0c1711 0%, #08110d 48%, #050806 100%);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  overflow-x: hidden;
+}
+button, input, select { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+.hidden { display: none !important; }
+
+.btn {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 16px;
+  background: #17231c;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
+}
+.btn:hover { border-color: rgba(56,193,114,.7); background: #203128; }
+.btn:active { transform: translateY(1px) scale(.98); }
+.btn:disabled { cursor: not-allowed; opacity: .42; }
+.btn.primary { border-color: transparent; background: var(--green); color: #06140c; }
+.btn.primary:hover { background: #4bd982; }
+.btn.gold { border-color: transparent; background: var(--gold); color: #251b05; }
+.btn.red { border-color: rgba(255,107,107,.35); background: rgba(255,107,107,.13); color: #ffd5d5; }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.small { min-height: 34px; padding: 0 10px; font-size: 12px; }
+.btn.icon { width: 44px; padding: 0; display: inline-grid; place-items: center; }
+
+input, select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  background: #0d1511;
+  color: var(--text);
+  outline: none;
+}
+input:focus, select:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(56,193,114,.14);
+}
+label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 700; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.tag.green { color: var(--green); background: rgba(56,193,114,.13); }
+.tag.gold { color: var(--gold); background: rgba(244,201,93,.14); }
+.tag.blue { color: #9bc6ff; background: rgba(91,157,239,.14); }
+.tag.red { color: #ffb5b5; background: rgba(255,107,107,.14); }
+
+.lobby {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(280px, 430px) minmax(420px, 1fr);
+  gap: clamp(28px, 5vw, 72px);
+  align-items: center;
+  padding: clamp(22px, 5vw, 64px);
+}
+.lobby-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(20,31,25,.86);
+  box-shadow: var(--shadow);
+  padding: clamp(20px, 4vw, 34px);
+}
+.lobby-kicker { color: var(--green); font-size: 13px; font-weight: 800; margin-bottom: 10px; }
+.lobby h1 { margin: 0; font-size: clamp(34px, 6vw, 72px); line-height: .95; letter-spacing: 0; }
+.lobby-copy { margin: 18px 0 0; max-width: 38ch; color: var(--muted); line-height: 1.7; }
+.lobby-visual {
+  min-height: min(560px, 76vh);
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.mini-table {
+  width: min(660px, 100%);
+  aspect-ratio: 1.48;
+  border-radius: 50%;
+  background: var(--felt);
+  border: 12px solid #46361f;
+  box-shadow: inset 0 0 90px rgba(0,0,0,.4), var(--shadow);
+  position: relative;
+}
+.mini-table::before {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.12);
+}
+.mini-card-row {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+.lobby-status {
+  position: absolute;
+  right: 8%;
+  bottom: 8%;
+  width: min(270px, 70vw);
+  border: 1px solid rgba(244,201,93,.35);
+  border-radius: var(--radius);
+  background: rgba(12,18,14,.88);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.lobby-status strong { display: block; margin-bottom: 8px; color: var(--gold); }
+.lobby-status span { display: block; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #0c1410;
+  margin-bottom: 22px;
+}
+.tab {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+.tab.active { background: var(--panel-3); color: var(--text); }
+.form { display: grid; gap: 14px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.server-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  padding-top: 6px;
+}
+
+.room {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+.room-main {
+  min-width: 0;
+  padding: 20px clamp(12px, 2.4vw, 30px) 22px;
+  display: grid;
+  grid-template-rows: auto minmax(360px, 1fr) auto;
+  gap: 16px;
+}
+.top-strip, .bottom-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.top-strip { justify-content: space-between; }
+.state-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.room-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  background: rgba(20,31,25,.82);
+}
+.room-code .code { color: var(--gold); font-size: 18px; font-weight: 900; letter-spacing: .06em; }
+.copy {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.table-zone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 440px;
+  overflow: visible;
+}
+.poker-table {
+  position: relative;
+  width: min(760px, 100%);
+  aspect-ratio: 1.56;
+}
+.felt {
+  position: absolute;
+  inset: 13% 8%;
+  border-radius: 50%;
+  background: var(--felt);
+  border: 11px solid #4b3a20;
+  box-shadow: inset 0 0 90px rgba(0,0,0,.45), 0 18px 58px rgba(0,0,0,.42);
+  display: grid;
+  place-items: center;
+}
+.felt::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.11);
+}
+.felt-center {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+.stage { color: rgba(255,255,255,.62); font-size: 12px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.pot { color: var(--gold); font-size: clamp(28px, 4vw, 42px); font-weight: 950; line-height: 1; }
+.pot-label { color: rgba(255,255,255,.58); font-size: 12px; font-weight: 800; }
+.community { display: flex; gap: 7px; align-items: center; min-height: 78px; }
+.card {
+  width: 52px;
+  height: 74px;
+  border-radius: 7px;
+  background: #fcfcf8;
+  color: #111;
+  display: grid;
+  place-items: center;
+  font-weight: 950;
+  box-shadow: 0 5px 15px rgba(0,0,0,.28);
+  line-height: 1;
+}
+.card .rank { font-size: 18px; }
+.card .suit { font-size: 16px; margin-top: 2px; }
+.card.red { color: #c92525; }
+.card.back {
+  border: 2px solid #163d63;
+  background: repeating-linear-gradient(45deg, #2a5f8f, #2a5f8f 5px, #1d4b76 5px, #1d4b76 10px);
+}
+.card.back::after { content: "♠"; color: rgba(255,255,255,.18); font-size: 24px; }
+.card.ghost {
+  background: rgba(255,255,255,.05);
+  border: 2px dashed rgba(255,255,255,.16);
+  box-shadow: none;
+}
+.card.large { width: 64px; height: 90px; }
+.card.large .rank { font-size: 23px; }
+
+.seat {
+  position: absolute;
+  width: 152px;
+  z-index: 3;
+  text-align: center;
+}
+.seat-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(15,24,19,.94);
+  padding: 9px;
+  box-shadow: 0 12px 26px rgba(0,0,0,.28);
+}
+.seat-meta {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+.position {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  min-height: 18px;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+}
+.position {
+  background: rgba(244,201,93,.16);
+  color: var(--gold);
+}
+.position.blind {
+  background: rgba(91,157,239,.15);
+  color: #9bc6ff;
+}
+.position.host {
+  background: rgba(56,193,114,.14);
+  color: var(--green);
+}
+.seat.active .seat-card {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(244,201,93,.16), 0 18px 34px rgba(0,0,0,.34);
+  animation: activePulse 1.4s ease-in-out infinite;
+}
+@keyframes activePulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(244,201,93,.14), 0 18px 34px rgba(0,0,0,.34); }
+  50% { box-shadow: 0 0 0 5px rgba(244,201,93,.24), 0 18px 34px rgba(0,0,0,.34); }
+}
+.seat.you .seat-card { border-color: var(--green); }
+.seat.folded { opacity: .56; }
+.hole { display: flex; gap: 4px; justify-content: center; margin-bottom: -3px; }
+.hole .card { width: 32px; height: 46px; border-radius: 5px; }
+.hole .card .rank { font-size: 13px; }
+.hole .card .suit { font-size: 11px; }
+.pname {
+  overflow: hidden;
+  max-width: 126px;
+  margin: 0 auto;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 900;
+}
+.pstack { margin-top: 2px; color: var(--gold); font-size: 12px; font-weight: 800; }
+.pstatus { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.pbet {
+  display: inline-flex;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(56,193,114,.12);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+}
+.dealer {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff7dc;
+  color: #16110a;
+  font-size: 12px;
+  font-weight: 950;
+}
+.seat.empty .seat-card {
+  border-style: dashed;
+  background: rgba(15,24,19,.56);
+}
+.empty-title { color: var(--muted); font-size: 12px; font-weight: 900; }
+.empty-plus {
+  width: 36px;
+  height: 36px;
+  margin: 2px auto 7px;
+  border: 1px dashed rgba(255,255,255,.18);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--green);
+  font-size: 24px;
+}
+.seat-actions { display: flex; justify-content: center; gap: 5px; margin-top: 7px; }
+.pos-1 { top: 0; left: 50%; transform: translateX(-50%); }
+.pos-2 { top: 9%; right: 10%; }
+.pos-3 { top: 37%; right: -1%; }
+.pos-4 { bottom: 9%; right: 10%; }
+.pos-5 { bottom: 0; left: 50%; transform: translateX(-50%); }
+.pos-6 { bottom: 9%; left: 10%; }
+.pos-7 { top: 37%; left: -1%; }
+.pos-8 { top: 9%; left: 10%; }
+.pos-9 { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 128px; opacity: .88; }
+
+.action-dock {
+  width: min(760px, 100%);
+  justify-self: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(20,31,25,.92);
+  box-shadow: 0 16px 42px rgba(0,0,0,.32);
+  padding: 12px;
+}
+.dock-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.timer { color: var(--gold); font-weight: 950; }
+.timer-bar { height: 4px; border-radius: 999px; background: #0b120e; overflow: hidden; margin-top: 8px; }
+.timer-bar span { display: block; width: 72%; height: 100%; background: linear-gradient(90deg, var(--green), var(--gold)); }
+.actions { display: grid; grid-template-columns: 1fr 1fr 1.7fr 1fr; gap: 10px; }
+.bet-group { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.hand-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+.hand-line .card { width: 40px; height: 56px; }
+.host-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.host-actions .hint { color: var(--muted); font-size: 13px; }
+.host-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.sidebar {
+  border-left: 1px solid var(--line);
+  background: rgba(8,14,11,.84);
+  min-width: 0;
+  height: 100svh;
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.side-section { border-bottom: 1px solid var(--line-soft); padding: 16px; }
+.side-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-weight: 900;
+}
+.info-list { display: grid; gap: 9px; color: var(--muted); font-size: 13px; }
+.info-row { display: flex; justify-content: space-between; gap: 12px; }
+.info-row strong { color: var(--text); }
+.log-section {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
+}
+.log-header {
+  min-height: 54px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 900;
+}
+.log-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.log-item {
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.log-item.key { border-color: var(--gold); color: #f6df9b; }
+.log-item.win { border-color: var(--green); color: #92e4b3; font-weight: 800; }
+
+.result-panel, .spectate-panel {
+  display: grid;
+  gap: 12px;
+  text-align: center;
+}
+.result-panel strong {
+  color: var(--gold);
+  font-size: 20px;
+}
+.spectate-panel strong {
+  color: #9bc6ff;
+  font-size: 18px;
+}
+.observer-prompt {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  border: 1px solid rgba(91,157,239,.44);
+  border-radius: var(--radius);
+  background: rgba(13,20,26,.94);
+  box-shadow: var(--shadow);
+  padding: 13px 14px;
+}
+.observer-prompt .text { color: var(--muted); font-size: 14px; }
+.observer-prompt strong { color: #9bc6ff; }
+.observer-prompt .buttons { display: flex; gap: 8px; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0,0,0,.62);
+  backdrop-filter: blur(5px);
+}
+.modal-box {
+  width: min(420px, 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #121d17;
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+.modal-box h2 { margin: 0 0 8px; font-size: 20px; }
+.modal-box p { margin: 0 0 18px; color: var(--muted); line-height: 1.6; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.difficulty { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px 0; }
+
+.scene-switcher {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 32px);
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(10,16,12,.9);
+  box-shadow: 0 12px 34px rgba(0,0,0,.28);
+}
+.scene-switcher button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+.scene-switcher button.active { background: var(--green); color: #06140c; }
+body:not([data-scene="lobby"]) .scene-switcher {
+  top: 50%;
+  bottom: auto;
+  max-width: 120px;
+  flex-direction: column;
+  transform: translateY(-50%);
+}
+body:not([data-scene="lobby"]) .scene-switcher button {
+  width: 104px;
+}
+.design-note {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  border: 1px solid rgba(244,201,93,.3);
+  border-radius: var(--radius);
+  background: rgba(18,24,17,.86);
+  color: var(--gold);
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 100;
+  border: 1px solid rgba(56,193,114,.34);
+  border-radius: var(--radius);
+  background: rgba(12,20,15,.94);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 980px) {
+  .lobby { grid-template-columns: 1fr; padding-bottom: 96px; }
+  .lobby-visual { min-height: 360px; order: -1; }
+  .room { grid-template-columns: 1fr; padding-bottom: 78px; }
+  .room-main { min-height: 100svh; grid-template-rows: auto minmax(360px, 1fr) auto; padding-bottom: 8px; }
+  .sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 45;
+    height: 58px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    grid-template-rows: 0 0 58px;
+    overflow: hidden;
+    transition: height .22s ease;
+  }
+  .sidebar.open { height: min(56svh, 480px); grid-template-rows: auto auto minmax(0, 1fr); }
+  .side-section { padding: 12px 16px; }
+  .sidebar:not(.open) .side-section { display: none; }
+  .log-header { cursor: pointer; min-height: 58px; }
+  .log-list { justify-content: flex-start; }
+  .action-dock { position: sticky; bottom: 66px; z-index: 30; }
+  .design-note { display: none; }
+}
+
+@media (min-width: 981px) {
+  .lobby { padding: 32px 56px; }
+  .lobby-panel { padding: 20px; }
+  .lobby h1 { font-size: clamp(32px, 4vw, 52px); }
+  .lobby-copy { margin-top: 10px; line-height: 1.45; }
+  .tabs { margin-bottom: 12px; }
+  .form { gap: 8px; }
+  .form-grid { gap: 8px; }
+  label { gap: 5px; }
+  .server-note { font-size: 12px; }
+}
+
+@media (max-width: 720px) {
+  .lobby { padding-top: 64px; }
+  .room-main { padding-top: 64px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .actions { grid-template-columns: 1fr 1fr; }
+  .bet-group { grid-column: 1 / -1; grid-template-columns: 1fr auto; }
+  .server-note, .host-actions, .top-strip { align-items: stretch; flex-direction: column; }
+  .top-strip .state-line, .top-strip .room-code { width: 100%; justify-content: space-between; }
+  .table-zone { min-height: 360px; }
+  .poker-table { width: 100%; max-width: calc(100vw - 40px); aspect-ratio: 1.38; transform-origin: center; }
+  .action-dock { width: 100%; max-width: calc(100vw - 40px); }
+  .seat { width: 96px; }
+  .seat-card { padding: 6px; }
+  .seat-meta { gap: 3px; margin-bottom: 3px; }
+  .position { min-width: 21px; min-height: 16px; padding: 0 4px; font-size: 9px; }
+  .pname { max-width: 78px; font-size: 11px; }
+  .pstack, .pstatus { font-size: 11px; }
+  .seat-actions { flex-direction: column; }
+  .seat-actions .btn { width: 100%; }
+  .community { gap: 4px; }
+  .card { width: 36px; height: 52px; }
+  .hole .card { width: 25px; height: 36px; }
+  .hole .card .rank { font-size: 11px; }
+  .hole .card .suit { font-size: 10px; }
+  .card.large { width: 52px; height: 74px; }
+  .stage { letter-spacing: .08em; }
+  .pot { font-size: 28px; }
+  .pos-2 { right: 4%; }
+  .pos-3 { right: 0; }
+  .pos-4 { right: 4%; }
+  .pos-6 { left: 4%; }
+  .pos-7 { left: 0; }
+  .pos-8 { left: 4%; }
+  .scene-switcher,
+  body:not([data-scene="lobby"]) .scene-switcher {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    bottom: auto;
+    max-width: none;
+    flex-direction: row;
+    transform: none;
+  }
+  .scene-switcher button { flex: 1 1 auto; }
+  body:not([data-scene="lobby"]) .scene-switcher button { width: auto; }
+  .observer-prompt { top: 70px; bottom: auto; width: calc(100vw - 32px); max-width: 360px; flex-direction: column; align-items: stretch; }
+}
+</style>
+</head>
+<body data-scene="lobby">
+
+<main id="scene-lobby" class="scene lobby">
+  <section class="lobby-panel">
+    <div class="lobby-kicker">Pokerface Online</div>
+    <h1>联机对战</h1>
+    <p class="lobby-copy">创建一个房间，发给好友 6 位房间码；或输入房间码加入。服务器地址使用内置默认值，不暴露给玩家。</p>
+    <div class="tabs" role="tablist" aria-label="大厅操作">
+      <button class="tab active" type="button" data-lobby-tab="create">创建房间</button>
+      <button class="tab" type="button" data-lobby-tab="join">加入房间</button>
+    </div>
+    <form id="form-create" class="form">
+      <label>你的昵称
+        <input value="房主" placeholder="输入昵称" />
+      </label>
+      <div class="form-grid">
+        <label>座位数
+          <select><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option><option>9</option></select>
+        </label>
+        <label>初始筹码
+          <input type="number" value="1000" min="100" />
+        </label>
+        <label>小盲注
+          <input type="number" value="5" min="1" />
+        </label>
+        <label>大盲注
+          <input type="number" value="10" min="2" />
+        </label>
+        <label>AI 难度
+          <select><option>简单</option><option selected>普通</option><option>困难</option></select>
+        </label>
+        <label>行动超时
+          <input type="number" value="120" min="15" />
+        </label>
+      </div>
+      <label>水下模式
+        <select><option selected>开启</option><option>关闭</option></select>
+      </label>
+      <button class="btn primary" type="button" onclick="switchScene('waiting')">创建房间</button>
+      <div class="server-note"><span>默认服务器</span><strong>已配置</strong></div>
+    </form>
+    <form id="form-join" class="form hidden">
+      <label>房间码
+        <input value="482910" inputmode="numeric" maxlength="6" placeholder="6 位数字" />
+      </label>
+      <label>你的昵称
+        <input value="玩家" placeholder="输入昵称" />
+      </label>
+      <label>重连码（可选）
+        <input placeholder="断线重连时填写" />
+      </label>
+      <button class="btn primary" type="button" onclick="switchScene('waiting')">加入房间</button>
+      <div class="server-note"><span>加入时若牌局已开始</span><strong>自动旁观</strong></div>
+    </form>
+  </section>
+  <section class="lobby-visual" aria-hidden="true">
+    <div class="mini-table">
+      <div class="mini-card-row">
+        <div class="card red"><div><span class="rank">A</span><br><span class="suit">♥</span></div></div>
+        <div class="card"><div><span class="rank">K</span><br><span class="suit">♠</span></div></div>
+        <div class="card ghost"></div>
+        <div class="card ghost"></div>
+        <div class="card ghost"></div>
+      </div>
+    </div>
+    <div class="lobby-status">
+      <strong>两步进入牌桌</strong>
+      <span>创建或加入后直接进入房间状态；等待中在牌桌上选座，对战中同一位置进入操作面板。</span>
+    </div>
+  </section>
+</main>
+
+<section id="scene-waiting" class="scene room hidden">
+  <div class="room-main">
+    <header class="top-strip">
+      <div class="state-line">
+        <span class="tag green">等待中</span>
+        <span class="tag">3/6 已入座</span>
+        <span class="tag gold">房主视角</span>
+      </div>
+      <div class="room-code"><span>房间码</span><span class="code">482910</span><button class="copy" onclick="showToast('房间码已复制')">复制</button></div>
+    </header>
+
+    <div class="table-zone">
+      <div class="poker-table">
+        <div class="seat pos-1 you">
+          <div class="seat-card">
+            <span class="dealer">房</span>
+            <div class="seat-meta"><span class="position host">房主</span></div>
+            <div class="pname">你</div><div class="pstack">1000</div><div class="pstatus">已入座</div>
+            <div class="seat-actions"><button class="btn small ghost">离座</button></div>
+          </div>
+        </div>
+        <div class="seat pos-2">
+          <div class="seat-card">
+            <div class="seat-meta"><span class="position">AI</span></div>
+            <div class="pname">AI-1</div><div class="pstack">1000</div><div class="pstatus">普通</div>
+            <div class="seat-actions"><button class="btn small red">移除</button></div>
+          </div>
+        </div>
+        <div class="seat empty pos-3">
+          <div class="seat-card">
+            <div class="empty-plus">+</div><div class="empty-title">空位</div>
+            <div class="seat-actions"><button class="btn small primary">入座</button><button class="btn small ghost" onclick="openAiModal()">AI</button></div>
+          </div>
+        </div>
+        <div class="seat pos-4">
+          <div class="seat-card">
+            <div class="seat-meta"><span class="position">AI</span></div>
+            <div class="pname">AI-2</div><div class="pstack">1000</div><div class="pstatus">困难</div>
+            <div class="seat-actions"><button class="btn small red">移除</button></div>
+          </div>
+        </div>
+        <div class="seat empty pos-5">
+          <div class="seat-card">
+            <div class="empty-plus">+</div><div class="empty-title">空位</div>
+            <div class="seat-actions"><button class="btn small primary">入座</button><button class="btn small ghost" onclick="openAiModal()">AI</button></div>
+          </div>
+        </div>
+        <div class="seat pos-6">
+          <div class="seat-card">
+            <div class="seat-meta"><span class="position">AI</span></div>
+            <div class="pname">AI-3</div><div class="pstack">1000</div><div class="pstatus">简单</div>
+            <div class="seat-actions"><button class="btn small red">移除</button></div>
+          </div>
+        </div>
+        <div class="seat empty pos-7">
+          <div class="seat-card">
+            <div class="empty-plus">+</div><div class="empty-title">空位</div>
+            <div class="seat-actions"><button class="btn small primary">入座</button><button class="btn small ghost" onclick="openAiModal()">AI</button></div>
+          </div>
+        </div>
+        <div class="felt">
+          <div class="felt-center">
+            <div class="stage">WAITING ROOM</div>
+            <div class="pot">等待开始</div>
+            <div class="pot-label">点击空位入座，或由房主添加 AI</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="action-dock">
+      <div class="host-actions">
+        <div class="hint">至少 2 个座位被占用即可开始。开始后座位锁定，玩家中途加入会进入旁观。</div>
+        <div class="host-buttons">
+          <button class="btn red" onclick="showResetModal()">重置牌局</button>
+          <button class="btn primary" onclick="switchScene('playing')">开始游戏</button>
+        </div>
+      </div>
+    </footer>
+  </div>
+  <aside class="sidebar">
+    <div class="side-section">
+      <div class="side-title"><span>房间信息</span><span class="tag green">等待中</span></div>
+      <div class="info-list">
+        <div class="info-row"><span>盲注</span><strong>5 / 10</strong></div>
+        <div class="info-row"><span>初始筹码</span><strong>1000</strong></div>
+        <div class="info-row"><span>水下模式</span><strong>开启</strong></div>
+        <div class="info-row"><span>行动超时</span><strong>120s</strong></div>
+      </div>
+    </div>
+    <div class="side-section">
+      <div class="side-title"><span>座位概览</span><span class="tag">3 AI</span></div>
+      <div class="info-list">
+        <div class="info-row"><span>真人</span><strong>你</strong></div>
+        <div class="info-row"><span>空位</span><strong>3 个</strong></div>
+      </div>
+    </div>
+    <div class="log-section">
+      <div class="log-header" onclick="toggleSidebar(this)"><span>房间日志</span><span class="tag">点击展开</span></div>
+      <div class="log-list">
+        <div class="log-item">房主创建了房间</div>
+        <div class="log-item">你已入座</div>
+        <div class="log-item">AI-1 加入空位（普通）</div>
+        <div class="log-item">AI-2 加入空位（困难）</div>
+        <div class="log-item key">AI-3 加入空位（简单）</div>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<section id="scene-playing" class="scene room hidden">
+  <div class="room-main">
+    <header class="top-strip">
+      <div class="state-line">
+        <span class="tag gold">第 3 手</span>
+        <span class="tag">翻牌圈</span>
+        <span class="tag">当前注 40</span>
+        <span class="tag green">轮到你</span>
+      </div>
+      <div class="room-code"><span>房间码</span><span class="code">482910</span><button class="copy" onclick="showToast('房间码已复制')">复制</button></div>
+    </header>
+
+    <div class="table-zone">
+      <div class="poker-table">
+        <div class="seat pos-1 folded">
+          <div class="hole"><div class="card back"></div><div class="card back"></div></div>
+          <div class="seat-card"><div class="seat-meta"><span class="position blind">SB</span></div><div class="pname">AI-1</div><div class="pstack">980</div><div class="pstatus">已弃牌</div></div>
+        </div>
+        <div class="seat pos-3 folded">
+          <div class="seat-card"><div class="seat-meta"><span class="position blind">BB</span></div><div class="pname">AI-2</div><div class="pstack">960</div><div class="pstatus">已弃牌</div></div>
+        </div>
+        <div class="seat pos-5">
+          <div class="hole"><div class="card back"></div><div class="card back"></div></div>
+          <div class="seat-card"><span class="dealer">D</span><div class="seat-meta"><span class="position">BTN</span></div><div class="pname">AI-3</div><div class="pstack">940</div><div class="pstatus">下注</div><div class="pbet">40</div></div>
+        </div>
+        <div class="seat pos-7 you active">
+          <div class="hole"><div class="card red"><div><span class="rank">A</span><br><span class="suit">♥</span></div></div><div class="card"><div><span class="rank">K</span><br><span class="suit">♠</span></div></div></div>
+          <div class="seat-card"><div class="seat-meta"><span class="position">CO</span></div><div class="pname">你</div><div class="pstack">960</div><div class="pstatus">等待行动</div></div>
+        </div>
+        <div class="felt">
+          <div class="felt-center">
+            <div class="stage">FLOP · 翻牌圈</div>
+            <div class="community">
+              <div class="card red"><div><span class="rank">Q</span><br><span class="suit">♥</span></div></div>
+              <div class="card"><div><span class="rank">9</span><br><span class="suit">♣</span></div></div>
+              <div class="card red"><div><span class="rank">2</span><br><span class="suit">♦</span></div></div>
+              <div class="card ghost"></div>
+              <div class="card ghost"></div>
+            </div>
+            <div><div class="pot-label">底池</div><div class="pot">120</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="action-dock">
+      <div class="hand-line">
+        <span>你的手牌</span>
+        <div class="card large red"><div><span class="rank">A</span><br><span class="suit">♥</span></div></div>
+        <div class="card large"><div><span class="rank">K</span><br><span class="suit">♠</span></div></div>
+        <span class="tag gold">高牌 A</span>
+      </div>
+      <div class="dock-header">
+        <span>轮到你行动，当前需要跟注 40</span>
+        <span class="timer">118s</span>
+      </div>
+      <div class="timer-bar"><span></span></div>
+      <div style="height:8px"></div>
+      <div class="actions">
+        <button class="btn red">弃牌</button>
+        <button class="btn ghost">跟注 40</button>
+        <div class="bet-group"><input type="number" value="80" /><button class="btn gold">加注</button></div>
+        <button class="btn primary">全下</button>
+      </div>
+    </footer>
+  </div>
+  <aside class="sidebar">
+    <div class="side-section">
+      <div class="side-title"><span>牌局信息</span><span class="tag gold">行动中</span></div>
+      <div class="info-list">
+        <div class="info-row"><span>阶段</span><strong>翻牌圈</strong></div>
+        <div class="info-row"><span>底池</span><strong>120</strong></div>
+        <div class="info-row"><span>当前最高注</span><strong>40</strong></div>
+        <div class="info-row"><span>行动玩家</span><strong>你</strong></div>
+      </div>
+    </div>
+    <div class="side-section">
+      <div class="side-title"><span>连接</span><span class="tag green">已连接</span></div>
+      <div class="info-list"><div class="info-row"><span>重连码</span><strong>xyz789</strong></div></div>
+    </div>
+    <div class="log-section">
+      <div class="log-header" onclick="toggleSidebar(this)"><span>对局日志</span><span class="tag">点击展开</span></div>
+      <div class="log-list">
+        <div class="log-item">第 3 手开始，庄家 AI-3</div>
+        <div class="log-item">AI-1 支付小盲 5</div>
+        <div class="log-item">AI-2 支付大盲 10</div>
+        <div class="log-item">你 跟注 10</div>
+        <div class="log-item key">发翻牌：Q♥ 9♣ 2♦</div>
+        <div class="log-item">AI-3 下注 40</div>
+        <div class="log-item win">等待你行动</div>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<section id="scene-finished" class="scene room hidden">
+  <div class="room-main">
+    <header class="top-strip">
+      <div class="state-line">
+        <span class="tag green">手牌结束</span>
+        <span class="tag">摊牌</span>
+        <span class="tag gold">你赢得 240</span>
+      </div>
+      <div class="room-code"><span>房间码</span><span class="code">482910</span></div>
+    </header>
+    <div class="table-zone">
+      <div class="poker-table">
+        <div class="seat pos-5">
+          <div class="hole"><div class="card"><div><span class="rank">Q</span><br><span class="suit">♣</span></div></div><div class="card red"><div><span class="rank">9</span><br><span class="suit">♦</span></div></div></div>
+          <div class="seat-card"><span class="dealer">D</span><div class="seat-meta"><span class="position">BTN</span></div><div class="pname">AI-3</div><div class="pstack">880</div><div class="pstatus">两对 Q 和 9</div></div>
+        </div>
+        <div class="seat pos-7 you active">
+          <div class="hole"><div class="card red"><div><span class="rank">A</span><br><span class="suit">♥</span></div></div><div class="card"><div><span class="rank">K</span><br><span class="suit">♠</span></div></div></div>
+          <div class="seat-card"><div class="seat-meta"><span class="position">CO</span></div><div class="pname">你</div><div class="pstack">1160</div><div class="pstatus">高牌 A · 获胜</div></div>
+        </div>
+        <div class="felt">
+          <div class="felt-center">
+            <div class="stage">SHOWDOWN · 摊牌</div>
+            <div class="community">
+              <div class="card red"><div><span class="rank">Q</span><br><span class="suit">♥</span></div></div>
+              <div class="card"><div><span class="rank">9</span><br><span class="suit">♣</span></div></div>
+              <div class="card red"><div><span class="rank">2</span><br><span class="suit">♦</span></div></div>
+              <div class="card"><div><span class="rank">7</span><br><span class="suit">♠</span></div></div>
+              <div class="card red"><div><span class="rank">J</span><br><span class="suit">♦</span></div></div>
+            </div>
+            <div><div class="pot-label">已分配底池</div><div class="pot">240</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="action-dock result-panel">
+      <strong>你赢得底池 240</strong>
+      <span class="tag">房主可开始下一手；若允许旁观者加入，将先重置回等待状态</span>
+      <div class="host-buttons" style="justify-content:center">
+        <button class="btn red" onclick="showResetModal()">重置牌局</button>
+        <button class="btn primary" onclick="switchScene('playing')">下一手</button>
+      </div>
+    </footer>
+  </div>
+  <aside class="sidebar">
+    <div class="side-section">
+      <div class="side-title"><span>结算</span><span class="tag green">已结束</span></div>
+      <div class="info-list">
+        <div class="info-row"><span>赢家</span><strong>你</strong></div>
+        <div class="info-row"><span>底池</span><strong>240</strong></div>
+        <div class="info-row"><span>你的筹码</span><strong>1160</strong></div>
+      </div>
+    </div>
+    <div class="side-section">
+      <div class="side-title"><span>旁观者</span><span class="tag blue">1 人</span></div>
+      <div class="info-list"><div class="info-row"><span>小明</span><strong>等待加入</strong></div></div>
+    </div>
+    <div class="log-section">
+      <div class="log-header" onclick="toggleSidebar(this)"><span>对局日志</span><span class="tag">点击展开</span></div>
+      <div class="log-list">
+        <div class="log-item">AI-3 全下 880</div>
+        <div class="log-item">你 跟注 880</div>
+        <div class="log-item key">摊牌：你 高牌 A，AI-3 两对</div>
+        <div class="log-item win">你赢得 240</div>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<section id="scene-spectating" class="scene room hidden">
+  <div class="room-main">
+    <header class="top-strip">
+      <div class="state-line">
+        <span class="tag blue">旁观中</span>
+        <span class="tag">第 5 手</span>
+        <span class="tag">转牌圈</span>
+      </div>
+      <div class="room-code"><span>房间码</span><span class="code">482910</span></div>
+    </header>
+    <div class="table-zone">
+      <div class="poker-table">
+        <div class="seat pos-1"><div class="hole"><div class="card back"></div><div class="card back"></div></div><div class="seat-card"><div class="seat-meta"><span class="position blind">SB</span></div><div class="pname">玩家A</div><div class="pstack">800</div><div class="pstatus">等待</div></div></div>
+        <div class="seat pos-3 folded"><div class="seat-card"><div class="seat-meta"><span class="position blind">BB</span></div><div class="pname">AI-1</div><div class="pstack">760</div><div class="pstatus">已弃牌</div></div></div>
+        <div class="seat pos-5 active"><div class="hole"><div class="card back"></div><div class="card back"></div></div><div class="seat-card"><span class="dealer">D</span><div class="seat-meta"><span class="position">BTN</span></div><div class="pname">玩家B</div><div class="pstack">600</div><div class="pstatus">行动中</div><div class="pbet">200</div></div></div>
+        <div class="seat pos-7"><div class="hole"><div class="card back"></div><div class="card back"></div></div><div class="seat-card"><div class="seat-meta"><span class="position">CO</span></div><div class="pname">AI-2</div><div class="pstack">840</div><div class="pstatus">跟注 200</div></div></div>
+        <div class="felt">
+          <div class="felt-center">
+            <div class="stage">TURN · 转牌圈</div>
+            <div class="community">
+              <div class="card red"><div><span class="rank">Q</span><br><span class="suit">♥</span></div></div>
+              <div class="card"><div><span class="rank">9</span><br><span class="suit">♣</span></div></div>
+              <div class="card red"><div><span class="rank">2</span><br><span class="suit">♦</span></div></div>
+              <div class="card"><div><span class="rank">7</span><br><span class="suit">♠</span></div></div>
+              <div class="card ghost"></div>
+            </div>
+            <div><div class="pot-label">底池</div><div class="pot">600</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="action-dock spectate-panel">
+      <strong>你正在旁观</strong>
+      <span class="tag blue">本手牌结束后，房主可允许你加入；加入会重置回等待选座</span>
+    </footer>
+  </div>
+  <aside class="sidebar">
+    <div class="side-section">
+      <div class="side-title"><span>牌局信息</span><span class="tag blue">只读</span></div>
+      <div class="info-list">
+        <div class="info-row"><span>阶段</span><strong>转牌圈</strong></div>
+        <div class="info-row"><span>底池</span><strong>600</strong></div>
+        <div class="info-row"><span>当前注</span><strong>200</strong></div>
+        <div class="info-row"><span>你的状态</span><strong>旁观</strong></div>
+      </div>
+    </div>
+    <div class="side-section"><div class="side-title"><span>限制</span><span class="tag">无操作</span></div><div class="info-list"><div class="info-row"><span>手牌</span><strong>不显示</strong></div></div></div>
+    <div class="log-section">
+      <div class="log-header" onclick="toggleSidebar(this)"><span>对局日志</span><span class="tag">点击展开</span></div>
+      <div class="log-list">
+        <div class="log-item">第 5 手开始</div>
+        <div class="log-item key">发翻牌：Q♥ 9♣ 2♦</div>
+        <div class="log-item">玩家B 下注 50</div>
+        <div class="log-item key">发转牌：7♠</div>
+        <div class="log-item">玩家B 下注 200</div>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<div id="observer-prompt" class="observer-prompt hidden">
+  <div class="text"><strong>小明</strong> 正在旁观。允许加入会重置本桌并回到等待选座。</div>
+  <div class="buttons">
+    <button class="btn small ghost" onclick="hideObserverPrompt()">忽略</button>
+    <button class="btn small primary" onclick="hideObserverPrompt(); showResetModal()">允许加入</button>
+  </div>
+</div>
+
+<div id="ai-modal" class="modal hidden">
+  <div class="modal-box">
+    <h2>添加 AI</h2>
+    <p>选择难度后会向服务端发送 add_bot，并携带目标座位号和难度。</p>
+    <div class="difficulty">
+      <button class="btn ghost" onclick="closeAiModal()">简单</button>
+      <button class="btn primary" onclick="closeAiModal()">普通</button>
+      <button class="btn gold" onclick="closeAiModal()">困难</button>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeAiModal()">取消</button></div>
+  </div>
+</div>
+
+<div id="reset-modal" class="modal hidden">
+  <div class="modal-box">
+    <h2>重置牌局</h2>
+    <p>确定重置牌局？所有真人筹码会恢复初始值，水下状态清空，AI 座位移除，房间回到等待状态。</p>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="hideResetModal()">取消</button>
+      <button class="btn red" onclick="hideResetModal(); switchScene('waiting')">确定重置</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden">已复制</div>
+
+<nav class="scene-switcher" aria-label="设计稿场景切换">
+  <button class="active" data-scene="lobby">大厅</button>
+  <button data-scene="waiting">等待选座</button>
+  <button data-scene="playing">对战中</button>
+  <button data-scene="finished">手牌结束</button>
+  <button data-scene="spectating">旁观</button>
+</nav>
+<div class="design-note">设计稿 · Mock data</div>
+
+<script>
+const scenes = ["lobby", "waiting", "playing", "finished", "spectating"];
+
+function switchScene(name) {
+  window.scrollTo(0, 0);
+  document.body.dataset.scene = name;
+  scenes.forEach((scene) => {
+    document.getElementById("scene-" + scene).classList.toggle("hidden", scene !== name);
+  });
+  document.querySelectorAll(".scene-switcher button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.scene === name);
+  });
+  document.querySelectorAll(".sidebar").forEach((sidebar) => sidebar.classList.remove("open"));
+  document.getElementById("observer-prompt").classList.toggle("hidden", name !== "finished");
+}
+
+document.querySelectorAll(".scene-switcher button").forEach((button) => {
+  button.addEventListener("click", () => switchScene(button.dataset.scene));
+});
+
+document.querySelectorAll("[data-lobby-tab]").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const isCreate = tab.dataset.lobbyTab === "create";
+    document.querySelectorAll("[data-lobby-tab]").forEach((item) => item.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("form-create").classList.toggle("hidden", !isCreate);
+    document.getElementById("form-join").classList.toggle("hidden", isCreate);
+  });
+});
+
+function toggleSidebar(node) {
+  node.closest(".sidebar").classList.toggle("open");
+}
+
+function showToast(message) {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.classList.remove("hidden");
+  clearTimeout(window.toastTimer);
+  window.toastTimer = setTimeout(() => toast.classList.add("hidden"), 1600);
+}
+
+function openAiModal() {
+  document.getElementById("ai-modal").classList.remove("hidden");
+}
+
+function closeAiModal() {
+  document.getElementById("ai-modal").classList.add("hidden");
+  showToast("AI 已添加到该座位");
+}
+
+function showResetModal() {
+  document.getElementById("reset-modal").classList.remove("hidden");
+}
+
+function hideResetModal() {
+  document.getElementById("reset-modal").classList.add("hidden");
+}
+
+function hideObserverPrompt() {
+  document.getElementById("observer-prompt").classList.add("hidden");
+}
+</script>
+</body>
+</html>

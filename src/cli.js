@@ -3,6 +3,8 @@ const { stdin: input, stdout: output } = require('node:process');
 const { GameEngine } = require('./game-engine');
 const { CliClient } = require('./cli-client');
 const { PokerServer } = require('./poker-server');
+const { WsPokerServer } = require('./ws-server');
+const { RoomManager } = require('./room-manager');
 const { TelnetPokerServer } = require('./telnet-server');
 
 function parseOptions(argv) {
@@ -79,14 +81,15 @@ async function main() {
     const options = parseOptions(args);
     const host = options.host || process.env.HOST || "0.0.0.0";
     const port = Number.parseInt(options.port || process.env.PORT || "3000", 10);
-    const server = new PokerServer({
-      host,
-      port,
-      adminToken: options.token,
-      allowMultipleRooms: Boolean(options["multi-room"]),
-    });
+    const wsPort = Number.parseInt(options["ws-port"] || process.env.WS_PORT || String(port + 1), 10);
+    const manager = new RoomManager({ adminToken: options.token, allowMultipleRooms: Boolean(options["multi-room"]) });
+    const server = new PokerServer({ host, port, manager });
+    const wsServer = new WsPokerServer({ host, port: wsPort, manager });
     try {
       await server.listen();
+      await wsServer.listen();
+      console.log("");
+      console.log(`网页 WebSocket 端口：${wsPort}`);
     } catch (error) {
       if (error.code === "EADDRINUSE") console.error(`端口已占用：${host}:${port}`);
       else if (error.code === "EACCES") console.error(`权限不足，无法监听：${host}:${port}`);
@@ -137,7 +140,7 @@ async function main() {
   if (command && ["help", "-h", "--help"].includes(command)) {
     console.log("用法：");
     console.log("  node poker.js                         启动单机命令行游戏");
-    console.log("  node poker.js server --host 0.0.0.0 --port 3000");
+    console.log("  node poker.js server --host 0.0.0.0 --port 3000 --ws-port 3001");
     console.log("  node poker.js create your-server.com:3000");
     console.log("  node poker.js join your-server.com:3000 房间码");
     console.log("  node poker.js telnet --host 0.0.0.0 --port 8787  启动 nc/telnet 纯终端桌");
