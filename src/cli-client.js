@@ -70,7 +70,6 @@ class CliClient {
       roomCode: this.roomCode,
       displayName,
       sessionId: this.session?.sessionId,
-      reconnectCode: this.session?.reconnectCode,
     });
   }
 
@@ -174,7 +173,6 @@ function saveSession(endpoint, roomCode, session) {
     }
     data[`${endpoint}|${roomCode}`] = {
       sessionId: session.sessionId,
-      reconnectCode: session.reconnectCode,
     };
     fs.writeFileSync(sessionStorePath(), `${JSON.stringify(data, null, 2)}\n`);
   } catch {

@@ -3,7 +3,7 @@ import { DEFAULT_WS_URL } from '../config.js';
 
 export function usePokerSocket() {
   const wsRef = useRef(null);
-  const reconnectCodeRef = useRef(null);
+  const authMessageRef = useRef(null); // 存储最后的 join/create 消息，用于自动重连
   const pingTimerRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
@@ -56,19 +56,14 @@ export function usePokerSocket() {
 
       case 'room_created':
         setRoomCode(msg.roomCode);
-        if (msg.reconnectCode) reconnectCodeRef.current = msg.reconnectCode;
         break;
 
       case 'joined_room':
         setRoomCode(msg.roomCode);
-        if (msg.reconnectCode) reconnectCodeRef.current = msg.reconnectCode;
         break;
 
       case 'room_snapshot':
         setSnapshot(msg);
-        if (msg.you?.reconnectCode) {
-          reconnectCodeRef.current = msg.you.reconnectCode;
-        }
         break;
 
       case 'action_error':
@@ -96,14 +91,9 @@ export function usePokerSocket() {
       reconnectAttemptsRef.current = 0;
       startPing();
 
-      if (isReconnect && reconnectCodeRef.current && roomCode) {
-        // Reconnect to existing room
-        sendRaw(ws, {
-          type: 'join_room',
-          roomCode,
-          reconnectCode: reconnectCodeRef.current,
-          displayName: '玩家',
-        });
+      if (isReconnect && authMessageRef.current) {
+        // 重连：重新发送原始 create/join 消息（含 displayName）
+        sendRaw(ws, authMessageRef.current);
       }
     };
 
@@ -139,6 +129,7 @@ export function usePokerSocket() {
 
   const connect = useCallback((message) => {
     pendingMessageRef.current = message;
+    authMessageRef.current = message; // 保存用于自动重连
     connectInternal(DEFAULT_WS_URL, false);
   }, [connectInternal]);
 
@@ -148,7 +139,7 @@ export function usePokerSocket() {
 
   const disconnect = useCallback(() => {
     clearTimers();
-    reconnectCodeRef.current = null;
+    authMessageRef.current = null;
     pendingMessageRef.current = null;
     setSnapshot(null);
     setRoomCode(null);

@@ -86,7 +86,6 @@ class WsPokerServer {
         type: "room_created",
         roomCode: room.roomCode,
         sessionId,
-        reconnectCode: room.sessions.get(sessionId).reconnectCode,
       });
       console.log(`[${new Date().toISOString()}] [WS] 房间创建 ${room.roomCode}`);
       room.broadcast();
@@ -95,22 +94,17 @@ class WsPokerServer {
 
     if (msg.type === "join_room") {
       const sessionId = msg.sessionId || randomCode(16);
-      const room = this.manager.joinRoom({
+      const { room, session } = this.manager.joinRoom({
         roomCode: msg.roomCode,
         sessionId,
         displayName: msg.displayName || "玩家",
         socket: wrapWs(ws),
-        reconnectCode: msg.reconnectCode,
       });
-      const session = [...room.sessions.values()].find(
-        (item) => item.sessionId === sessionId || item.reconnectCode === msg.reconnectCode,
-      ) ?? room.sessions.get(sessionId);
       this.wsRooms.set(ws, { roomCode: room.roomCode, sessionId: session.sessionId });
       this.sendJson(ws, {
         type: "joined_room",
         roomCode: room.roomCode,
         sessionId: session.sessionId,
-        reconnectCode: session.reconnectCode,
       });
       console.log(`[${new Date().toISOString()}] [WS] 玩家连接 房间 ${room.roomCode} ${session.displayName}`);
       room.broadcast();
@@ -156,12 +150,23 @@ class WsPokerServer {
     if (!room) return;
     room.disconnectSession(binding.sessionId);
     console.log(`[${new Date().toISOString()}] [WS] 玩家断开 房间 ${room.roomCode}`);
-    // 无真人时自动关闭房间
     if (!room.hasConnectedHumans()) {
-      this.manager.removeRoom(room.roomCode);
-      console.log(`[${new Date().toISOString()}] [WS] 房间自动关闭（无真人） ${room.roomCode}`);
-    } else if (room.clients.size === 0) {
-      this.manager.removeRoom(room.roomCode);
+      if (room.hasHumanSeats()) {
+        // 有真人入座但全部断线：给 5 分钟宽限期等待重连
+        if (!room.pendingCloseTimer) {
+          room.pendingCloseTimer = setTimeout(() => {
+            this.manager.removeRoom(room.roomCode);
+            console.log(`[${new Date().toISOString()}] [WS] 房间超时关闭（无人重连） ${room.roomCode}`);
+          }, 5 * 60 * 1000);
+          room.pendingCloseTimer.unref?.();
+          console.log(`[${new Date().toISOString()}] [WS] 房间进入宽限期（5分钟） ${room.roomCode}`);
+        }
+        room.broadcast();
+      } else {
+        // 无真人入座，直接关闭
+        this.manager.removeRoom(room.roomCode);
+        console.log(`[${new Date().toISOString()}] [WS] 房间自动关闭（无真人） ${room.roomCode}`);
+      }
     } else {
       room.broadcast();
     }

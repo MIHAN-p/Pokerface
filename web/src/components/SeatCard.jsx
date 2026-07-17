@@ -136,6 +136,32 @@ function PlayingSeat({ seatIndex, player, isYou, isActive, handFinished, lastHan
   const isWinner = handFinished && lastHandResult?.winners?.includes(seatIndex);
   const revealedHandName = revealed?.handName;
 
+  // 行动筹码分类
+  const actionChip = (() => {
+    if (handFinished) {
+      if (revealedHandName) return { text: revealedHandName, type: 'hand' };
+      return null;
+    }
+    if (isFolded) return { text: '弃牌', type: 'fold' };
+    if (isEliminated) return { text: '淘汰', type: 'fold' };
+    if (!statusText || statusText === '等待') return { text: '等待', type: 'wait' };
+    if (isAllIn) return { text: 'ALL IN', type: 'allin' };
+    if (isRaise) {
+      const amount = player.currentBet || '';
+      return { text: `+${amount}`, type: 'raise' };
+    }
+    if (statusText.includes('跟注')) {
+      const amount = player.currentBet || '';
+      return { text: `跟 ${amount}`, type: 'call' };
+    }
+    if (statusText.includes('过牌') || statusText.includes('过')) {
+      return { text: '过', type: 'check' };
+    }
+    if (statusText.includes('大盲')) return { text: `盲 ${player.currentBet}`, type: 'blind' };
+    if (statusText.includes('小盲')) return { text: `盲 ${player.currentBet}`, type: 'blind' };
+    return { text: statusText, type: 'default' };
+  })();
+
   const classes = [
     'seat',
     isYou ? 'you' : '',
@@ -168,10 +194,10 @@ function PlayingSeat({ seatIndex, player, isYou, isActive, handFinished, lastHan
         <div className={`pstatus ${isAggressive ? (isAllIn ? 'allin-text' : 'raise-text') : ''} ${isWinner && revealedHandName ? 'winner-text' : ''}`}>
           {revealedHandName || player.handName || player.status}
         </div>
-        {player.currentBet > 0 && !isFolded && !isEliminated && (
-          <div className={`pbet ${isAggressive ? 'pbet-hot' : ''}`}>{player.currentBet}</div>
-        )}
       </div>
+      {actionChip && (
+        <div className={`action-chip ${actionChip.type}`}>{actionChip.text}</div>
+      )}
     </div>
   );
 }

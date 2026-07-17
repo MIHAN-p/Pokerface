@@ -5,7 +5,7 @@ export default function Lobby({ poker }) {
   const [formError, setFormError] = useState(null);
 
   // Create form state
-  const [createName, setCreateName] = useState('房主');
+  const [createName, setCreateName] = useState('');
   const [playerCount, setPlayerCount] = useState(6);
   const [initialStack, setInitialStack] = useState(1000);
   const [smallBlind, setSmallBlind] = useState(5);
@@ -16,8 +16,7 @@ export default function Lobby({ poker }) {
 
   // Join form state
   const [joinCode, setJoinCode] = useState('');
-  const [joinName, setJoinName] = useState('玩家');
-  const [reconnectCode, setReconnectCode] = useState('');
+  const [joinName, setJoinName] = useState('');
 
   const handleCreate = (e) => {
     e.preventDefault();
@@ -56,7 +55,6 @@ export default function Lobby({ poker }) {
       type: 'join_room',
       roomCode: joinCode.trim(),
       displayName: joinName.trim(),
-      reconnectCode: reconnectCode.trim() || undefined,
     });
   };
 
@@ -65,7 +63,7 @@ export default function Lobby({ poker }) {
       <section className="lobby-panel">
         <div className="lobby-kicker">Pokerface Online</div>
         <h1>联机对战</h1>
-        <p className="lobby-copy">创建一个房间，发给好友 6 位房间码；或输入房间码加入。服务器地址使用内置默认值，不暴露给玩家。</p>
+        <p className="lobby-copy">创建一个房间，发给好友 6 位房间码；或输入房间码加入。</p>
 
         <div className="tabs" role="tablist">
           <button
@@ -136,10 +134,6 @@ export default function Lobby({ poker }) {
             <button className="btn primary" type="submit" disabled={poker.connectionState === 'connecting'}>
               {poker.connectionState === 'connecting' ? '连接中…' : '创建房间'}
             </button>
-            <div className="server-note">
-              <span>默认服务器</span>
-              <strong>已配置</strong>
-            </div>
           </form>
         ) : (
           <form className="form" onSubmit={handleJoin}>
@@ -157,20 +151,12 @@ export default function Lobby({ poker }) {
               你的昵称
               <input value={joinName} placeholder="输入昵称" onChange={(e) => setJoinName(e.target.value)} />
             </label>
-            <label>
-              重连码（可选）
-              <input
-                value={reconnectCode}
-                placeholder="断线重连时填写"
-                onChange={(e) => setReconnectCode(e.target.value)}
-              />
-            </label>
             <button className="btn primary" type="submit" disabled={poker.connectionState === 'connecting'}>
               {poker.connectionState === 'connecting' ? '连接中…' : '加入房间'}
             </button>
             <div className="server-note">
-              <span>加入时若牌局已开始</span>
-              <strong>自动旁观</strong>
+              <span>断线后重新加入</span>
+              <strong>输入相同昵称即可恢复</strong>
             </div>
           </form>
         )}

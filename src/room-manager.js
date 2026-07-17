@@ -16,7 +16,6 @@ class PokerRoom {
       displayName: "",
       sessionId: null,
       connected: false,
-      reconnectCode: null,
       stack: this.config.initialStack,
       underwaterHands: 0,
       underwaterDebt: 0,
@@ -30,15 +29,20 @@ class PokerRoom {
     this.actionDeadline = null;
     this.createdAt = new Date();
     this.updatedAt = new Date();
+    this.pendingCloseTimer = null; // 断线宽限期计时器
   }
 
   addSession({ sessionId, displayName, isHost, socket }) {
+    // 玩家重连，取消待关闭计时器
+    if (this.pendingCloseTimer) {
+      clearTimeout(this.pendingCloseTimer);
+      this.pendingCloseTimer = null;
+    }
     const session = this.sessions.get(sessionId) ?? {
       sessionId,
       displayName,
       isHost,
       seatIndex: null,
-      reconnectCode: randomCode(10),
       connected: true,
       lastSeenAt: new Date(),
     };
@@ -84,6 +88,13 @@ class PokerRoom {
     return false;
   }
 
+  /**
+   * 检查房间中是否有真人入座（含已断线但未过期的）
+   */
+  hasHumanSeats() {
+    return this.seats.some((seat) => seat.type === "human");
+  }
+
   sit(sessionId, seatIndex) {
     if (this.status !== "waiting") throw new Error("牌局中不能换座");
     const session = this.requireSession(sessionId);
@@ -95,7 +106,6 @@ class PokerRoom {
     seat.displayName = session.displayName;
     seat.sessionId = sessionId;
     seat.connected = true;
-    seat.reconnectCode = session.reconnectCode;
     seat.stack = seat.stack ?? this.config.initialStack;
     session.seatIndex = seat.index;
   }
@@ -110,7 +120,6 @@ class PokerRoom {
       displayName: "",
       sessionId: null,
       connected: false,
-      reconnectCode: null,
       stack: this.config.initialStack,
       underwaterHands: 0,
       underwaterDebt: 0,
@@ -168,7 +177,6 @@ class PokerRoom {
       seat.displayName = `AI-${botNo}`;
       seat.connected = true;
       seat.sessionId = null;
-      seat.reconnectCode = null;
       seat.stack = this.config.initialStack;
       seat.botConfig = {
         name: seat.displayName,
@@ -293,7 +301,6 @@ class PokerRoom {
             displayName: session.displayName,
             isHost: session.isHost,
             seatIndex: session.seatIndex,
-            reconnectCode: session.reconnectCode,
           }
         : null,
       game: this.engine?.publicSnapshot(viewerSeatIndex) ?? null,
@@ -378,10 +385,16 @@ class RoomManager {
     this.rooms.delete(String(roomCode));
   }
 
-  joinRoom({ roomCode, sessionId, displayName, socket, reconnectCode }) {
+  joinRoom({ roomCode, sessionId, displayName, socket }) {
     const room = this.rooms.get(String(roomCode));
     if (!room) throw new Error("房间不存在或已关闭");
-    const existingSeat = room.seats.find((seat) => seat.reconnectCode && seat.reconnectCode === reconnectCode);
+    // 按昵称匹配已有座位（断线重连场景）
+    const existingSeat = room.seats.find(
+      (seat) => seat.type === "human" && seat.displayName === displayName,
+    );
+    const existingSession = existingSeat
+      ? room.sessions.get(existingSeat.sessionId)
+      : null;
     const session = room.addSession({
       sessionId: existingSeat?.sessionId ?? sessionId,
       displayName: displayName || existingSeat?.displayName,
@@ -393,7 +406,7 @@ class RoomManager {
       existingSeat.connected = true;
       session.seatIndex = existingSeat.index;
     }
-    return room;
+    return { room, session };
   }
 }
 

@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import PokerTable from './PokerTable.jsx';
 import ActionPanel from './ActionPanel.jsx';
-import GameLog from './GameLog.jsx';
 
 export default function RoomView({ poker }) {
   const { snapshot, send, disconnect } = poker;
@@ -178,7 +177,10 @@ export default function RoomView({ poker }) {
   const renderSidebar = () => {
     return (
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="收起侧栏">✕</button>
+        <div className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <span>{isWaiting ? '房间信息' : '连接信息'}</span>
+          <span className="tag">{sidebarOpen ? '收起' : '展开'}</span>
+        </div>
         {/* Room info (waiting only) or connection info (playing) */}
         <div className="side-section">
           {isWaiting ? (
@@ -201,7 +203,6 @@ export default function RoomView({ poker }) {
                 <span className="tag green">{poker.connectionState === 'connected' ? '已连接' : poker.connectionState}</span>
               </div>
               <div className="info-list">
-                <div className="info-row"><span>重连码</span><strong>{you?.reconnectCode || '—'}</strong></div>
                 {!isSpectating && (
                   <div className="info-row"><span>你的座位</span><strong>#{you?.seatIndex}</strong></div>
                 )}
@@ -212,14 +213,6 @@ export default function RoomView({ poker }) {
             </>
           )}
         </div>
-
-        {/* Logs */}
-        <GameLog
-          logs={game?.logs}
-          title={isWaiting ? '房间日志' : '对局日志'}
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        />
 
         {/* Leave room button */}
         <div className="side-section" style={{ borderBottom: '0' }}>
@@ -247,7 +240,7 @@ export default function RoomView({ poker }) {
         />
         {renderBottomPanel()}
       </div>
-      {renderSidebar()}
+      {/* {renderSidebar()} */}
 
       {/* AI difficulty modal */}
       {aiModalSeat !== null && (
