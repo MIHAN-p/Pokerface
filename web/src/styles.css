@@ -359,7 +359,7 @@ label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weig
 .seat.you .seat-card { border-color: var(--green); }
 .seat.folded { opacity: .56; }
 .hole { display: flex; gap: 4px; justify-content: center; margin-bottom: -3px; }
-.hole .card { width: 32px; height: 46px; border-radius: 5px; }
+.hole .card { width: 32px; height: 46px; border-radius: 5px; opacity: .92; }
 .hole .card .rank { font-size: 13px; }
 .hole .card .suit { font-size: 11px; }
 .pname {

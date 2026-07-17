@@ -43,6 +43,9 @@ class TelnetPokerServer {
     socket._gbkEncodingDecided = false;
     socket._welcomeSent = false;
     socket._receivedIac = false;
+    socket.setKeepAlive(true, 15000);  // 每 15s 发心跳防止 NAT/防火墙断连
+    socket.setNoDelay(true);            // 禁用 Nagle 算法，减少操作延迟
+    try { socket.writableHighWaterMark = 65536; } catch(e) { /* Node.js v22+ makes this read-only */ }  // 64KB 写缓冲
     socket.write(Buffer.from([255, 251, 1, 255, 251, 3]));
 
     const sendWelcome = () => {
