@@ -74,18 +74,18 @@ class PokerServer {
     }
     if (msg.type === "join_room") {
       const sessionId = msg.sessionId || randomCode(16);
-      const room = this.manager.joinRoom({
+      const { room: joinedRoom, session: joinedSession } = this.manager.joinRoom({
         roomCode: msg.roomCode,
         sessionId,
         displayName: msg.displayName || "玩家",
         socket,
         reconnectCode: msg.reconnectCode,
       });
-      const session = [...room.sessions.values()].find((item) => item.sessionId === sessionId || item.reconnectCode === msg.reconnectCode) ?? room.sessions.get(sessionId);
-      this.socketRooms.set(socket, { roomCode: room.roomCode, sessionId: session.sessionId });
-      sendJson(socket, { type: "joined_room", roomCode: room.roomCode, sessionId: session.sessionId, reconnectCode: session.reconnectCode });
-      console.log(`[${new Date().toISOString()}] 玩家连接 房间 ${room.roomCode} ${session.displayName}`);
-      room.broadcast();
+      const session = joinedSession || [...joinedRoom.sessions.values()].find((item) => item.sessionId === sessionId || item.reconnectCode === msg.reconnectCode) ?? joinedRoom.sessions.get(sessionId);
+      this.socketRooms.set(socket, { roomCode: joinedRoom.roomCode, sessionId: session.sessionId });
+      sendJson(socket, { type: "joined_room", roomCode: joinedRoom.roomCode, sessionId: session.sessionId, reconnectCode: session.reconnectCode });
+      console.log(`[${new Date().toISOString()}] 玩家连接 房间 ${joinedRoom.roomCode} ${session.displayName}`);
+      joinedRoom.broadcast();
       return;
     }
 

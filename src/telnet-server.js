@@ -172,12 +172,13 @@ class TelnetPokerServer {
           const roomCode = text.trim();
           const room = this.manager.rooms.get(roomCode);
           if (!room) throw new Error(`房间 ${roomCode} 不存在`);
-          state.room = this.manager.joinRoom({
+          const { room: joinedRoom } = this.manager.joinRoom({
             roomCode,
             sessionId: state.sessionId,
             displayName: state.displayName,
             socket: state.socket,
           });
+          state.room = joinedRoom;
           state.step = "command";
           const cfg = state.room.config;
           sendText(state.socket, `已加入房间 ${state.room.roomCode}：${cfg.playerCount}人桌  ${cfg.initialStack}筹码  盲${cfg.smallBlind}/${cfg.bigBlind}  ${cfg.actionTimeoutSeconds}秒超时`);
@@ -320,18 +321,20 @@ class TelnetPokerServer {
   disconnect(state) {
     if (state.isHost && state.step !== "command") this.pendingHost = false;
     if (state.room) {
-      // 牌局中断连算弃牌
-      if (state.room.engine && !state.room.engine.handFinished && state.sessionId) {
-        const session = state.room.sessions.get(state.sessionId);
-        if (session?.seatIndex && state.room.engine.players.some((p) => p.seatIndex === session.seatIndex)) {
-          state.room.engine.applySeatAction(session.seatIndex, new Action(ActionKind.FOLD));
-          state.room.syncStacksFromEngine();
-          const name = state.displayName || session.displayName;
-          for (const [sid, sock] of state.room.clients) {
-            if (sid !== state.sessionId) sendText(sock, `${name} 退出`);
+      try {
+        // 牌局中断连算弃牌（best-effort，不阻塞后续清理）
+        if (state.room.engine && !state.room.engine.handFinished && state.sessionId) {
+          const session = state.room.sessions.get(state.sessionId);
+          if (session?.seatIndex && state.room.engine.players.some((p) => p.seatIndex === session.seatIndex)) {
+            state.room.engine.applySeatAction(session.seatIndex, new Action(ActionKind.FOLD));
+            state.room.syncStacksFromEngine();
+            const name = state.displayName || session.displayName;
+            for (const [sid, sock] of state.room.clients) {
+              if (sid !== state.sessionId) sendText(sock, `${name} 退出`);
+            }
           }
         }
-      }
+      } catch (_) { /* 断连时强制弃牌失败不影响房间清理 */ }
       state.room.disconnectSession(state.sessionId);
       if (state.room.clients.size === 0) {
         this.manager.removeRoom(state.room.roomCode);
