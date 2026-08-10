@@ -172,13 +172,15 @@ class TelnetPokerServer {
           const roomCode = text.trim();
           const room = this.manager.rooms.get(roomCode);
           if (!room) throw new Error(`房间 ${roomCode} 不存在`);
-          const { room: joinedRoom } = this.manager.joinRoom({
+          const { room: joinedRoom, session } = this.manager.joinRoom({
             roomCode,
             sessionId: state.sessionId,
             displayName: state.displayName,
             socket: state.socket,
           });
           state.room = joinedRoom;
+          // 同名重连时 joinRoom 会复用原 sessionId，必须同步，否则后续命令报“会话不存在”
+          state.sessionId = session.sessionId;
           state.step = "command";
           const cfg = state.room.config;
           sendText(state.socket, `已加入房间 ${state.room.roomCode}：${cfg.playerCount}人桌  ${cfg.initialStack}筹码  盲${cfg.smallBlind}/${cfg.bigBlind}  ${cfg.actionTimeoutSeconds}秒超时`);
