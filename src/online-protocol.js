@@ -328,7 +328,10 @@ function renderOnlineSnapshot(snapshot) {
   }
   lines.push("");
   lines.push(section, "最近行动：");
-  const showLogs = game.logs && game.logs.length ? game.logs : ["无"];
+  const allLogs = game.logs && game.logs.length ? game.logs : ["无"];
+  const MAX_LOGS = 8;
+  const showLogs = allLogs.length > MAX_LOGS ? allLogs.slice(-MAX_LOGS) : allLogs;
+  if (allLogs.length > MAX_LOGS) lines.push(`  ...(共${allLogs.length}条，显示最近${MAX_LOGS}条)`);
   lines.push(...showLogs.map((line) => `  ${line.replace(/加注/g, `${RED}加注${RST}`).replace(/全下/g, `${RED}全下${RST}`).replace(/下注/g, `${RED}下注${RST}`)}`));
   if (game.handFinished) {
     lines.push("");
@@ -353,7 +356,9 @@ function renderOnlineSnapshot(snapshot) {
     lines.push("");
     const resetTip = you?.isHost ? " 重置/restart" : "";
     const actionLabels = game.legalActions.map((action) => action.label).concat(["状态/st", "退出/q"]).join(" ") + resetTip;
+    // 操作栏：第一行手牌，第二行公共牌，第三行操作
     if (hero?.hole) lines.push(`${GRN}你的手牌：${formatCardDtos(hero.hole)}${RST}`);
+    if (game.board.length) lines.push(`${GRN}公共牌：${formatCardDtos(game.board)}${RST}`);
     lines.push(`${YLW}${actionLabels}${RST}`);
   } else {
     lines.push("");
