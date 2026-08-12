@@ -66,7 +66,7 @@ function sendText(socket, text) {
 
 /**
  * Try to detect client text encoding from raw bytes.
- * Returns "utf8" or "gbk".
+ * Returns "utf8", "gbk" or "unknown" (bytes too incomplete to tell).
  */
 function detectTextEncoding(bytes) {
   const asUtf8 = bytes.toString("utf8");
@@ -75,7 +75,28 @@ function detectTextEncoding(bytes) {
     const asGbk = iconv.decode(bytes, "gbk");
     if (asGbk && !asGbk.includes("\uFFFD") && asGbk.length > 0) return "gbk";
   } catch {}
-  return "utf8";
+  return "unknown";
+}
+
+/**
+ * If the GBK buffer ends with a lone lead byte (>= 0x80 with no follow-up
+ * byte), return its index so the caller can defer it until the next chunk.
+ * Returns -1 when the buffer is complete.
+ */
+function gbkIncompleteTailIndex(raw) {
+  let i = 0;
+  while (i < raw.length) {
+    if (raw[i] < 0x80) {
+      i += 1;
+      continue;
+    }
+    if (i + 1 < raw.length) {
+      i += 2;
+      continue;
+    }
+    return i;
+  }
+  return -1;
 }
 
 /**
@@ -109,20 +130,46 @@ function decodeTelnetInput(chunk, socket) {
   }
   if (!hasRealData && outputBytes.length === 0) return null;
   if (!hasRealData && outputBytes.every(b => b === 0)) return "";
-  const raw = Buffer.from(outputBytes);
-  // Auto-detect encoding only from non-ASCII input (bytes > 127).
+  let raw = Buffer.from(outputBytes);
+  // Merge a deferred tail byte from the previous chunk (split GBK/UTF-8 char).
+  if (socket && socket._pendingBytes && socket._pendingBytes.length) {
+    raw = Buffer.concat([socket._pendingBytes, raw]);
+    socket._pendingBytes = null;
+  }
+  // Auto-detect encoding only from non-ASCII input (bytes > 127), and only
+  // while the encoding is not already locked (e.g. by telnet IAC negotiation).
   // Pure ASCII is the same in UTF-8 and GBK, so it can't tell us which encoding the client uses.
   if (socket && !socket._gbkEncodingDecided) {
     const hasNonAscii = raw.some(b => b > 127);
     if (hasNonAscii) {
-      socket._gbkEncoding = detectTextEncoding(raw) === "gbk";
-      socket._gbkEncodingDecided = true;
+      const detected = detectTextEncoding(raw);
+      if (detected === "gbk") {
+        socket._gbkEncoding = true;
+        socket._gbkEncodingDecided = true;
+      } else if (detected === "utf8") {
+        socket._gbkEncoding = false;
+        socket._gbkEncodingDecided = true;
+      }
+      // "unknown": bytes too incomplete to decide — keep current encoding,
+      // do not lock, and let the deferred-byte logic below sort it out.
     }
   }
   if (socket && socket._gbkEncoding) {
+    const incomplete = gbkIncompleteTailIndex(raw);
+    if (incomplete >= 0) {
+      socket._pendingBytes = Buffer.from(raw.subarray(incomplete));
+      raw = raw.subarray(0, incomplete);
+    }
     return iconv.decode(raw, "gbk");
   }
-  return raw.toString("utf8");
+  const text = raw.toString("utf8");
+  // UTF-8: a multi-byte char may arrive split across chunks. Defer a trailing
+  // high byte when decoding produced a replacement character.
+  if (text.includes("\uFFFD") && raw.length && raw[raw.length - 1] >= 0x80) {
+    socket._pendingBytes = Buffer.from([raw[raw.length - 1]]);
+    return raw.subarray(0, raw.length - 1).toString("utf8");
+  }
+  return text;
 }
 
 /**

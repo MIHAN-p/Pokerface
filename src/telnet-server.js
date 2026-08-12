@@ -46,6 +46,7 @@ class TelnetPokerServer {
     socket.setKeepAlive(true, 15000);  // 每 15s 发心跳防止 NAT/防火墙断连
     socket.setNoDelay(true);            // 禁用 Nagle 算法，减少操作延迟
     try { socket.writableHighWaterMark = 65536; } catch(e) { /* Node.js v22+ makes this read-only */ }  // 64KB 写缓冲
+    socket._pendingBytes = null;  // 被拆分的多字节字符尾部，等下一个 chunk 合并解码
     socket.write(Buffer.from([255, 251, 1, 255, 251, 3]));
 
     const sendWelcome = () => {
@@ -59,14 +60,14 @@ class TelnetPokerServer {
       }
       sendText(socket, "欢迎来到 Pokerface 纯终端联机桌。");
       sendText(socket, "");
-      if (actualIsHost) {
+      if (state.isHost) {
         this.pendingHost = true;
         state.isHost = true;
         sendText(socket, "你是第一个连接的玩家，将成为房主。");
-        this.prompt(state, "昵称（默认 房主）：");
+        this.prompt(state, "昵称（不能为空）：");
       } else {
         state.isHost = false;
-        this.prompt(state, "昵称（默认 玩家）：");
+        this.prompt(state, "昵称（不能为空）：");
       }
       if (state._preWelcomeBuffer && state._preWelcomeBuffer.length) {
         for (const buffered of state._preWelcomeBuffer) {
@@ -88,8 +89,11 @@ class TelnetPokerServer {
     };
 
     const welcomeTimer = setTimeout(() => {
-      // 无 IAC → nc/Mac → UTF-8
-      if (!socket._receivedIac) socket._gbkEncoding = false;
+      // 无 IAC → nc/Mac → UTF-8（锁定，不再内容检测覆盖）
+      if (!socket._receivedIac) {
+        socket._gbkEncoding = false;
+        socket._gbkEncodingDecided = true;
+      }
       sendWelcome();
     }, 300);
 
@@ -99,6 +103,7 @@ class TelnetPokerServer {
         if (isIacOnly) {
           socket._receivedIac = true;
           socket._gbkEncoding = true;
+          socket._gbkEncodingDecided = true;  // telnet 客户端已确认，锁定 GBK，不再内容检测
           clearTimeout(welcomeTimer);
           sendWelcome();
           return;
@@ -152,7 +157,11 @@ class TelnetPokerServer {
   handleLine(state, text) {
     try {
       if (state.step === "name") {
-        state.displayName = text || (state.isHost ? "房主" : "玩家");
+        if (!text) {
+          this.prompt(state, "昵称不能为空，请重新输入：");
+          return;
+        }
+        state.displayName = text;
         if (state.isHost) {
           state.step = "roomCode";
           this.prompt(state, "设置房间号（回车自动生成）：");
