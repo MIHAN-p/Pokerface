@@ -110,8 +110,8 @@ class PokerRoom {
     session.seatIndex = seat.index;
   }
 
-  leaveSeat(sessionId) {
-    if (this.status !== "waiting") throw new Error("牌局中不能离座");
+  leaveSeat(sessionId, { force = false } = {}) {
+    if (!force && this.status !== "waiting") throw new Error("牌局中不能离座");
     const session = this.requireSession(sessionId);
     if (!session.seatIndex) return;
     const seat = this.getSeat(session.seatIndex);
@@ -265,7 +265,8 @@ class PokerRoom {
     if (!this.engine) return;
     for (const player of this.engine.players) {
       const seat = this.getSeat(player.seatIndex);
-      if (seat) {
+      // 跳过已释放（玩家退出）的空座位，避免把筹码写回空位
+      if (seat && seat.type !== "empty") {
         seat.stack = player.stack;
         seat.underwaterHands = player.underwaterHands;
         seat.underwaterDebt = player.underwaterDebt;

@@ -221,6 +221,10 @@ class TelnetPokerServer {
               }
             }
           }
+          // 显式退出：释放座位，避免名字残留
+          try {
+            state.room?.leaveSeat(state.sessionId, { force: true });
+          } catch (_) { /* 座位已释放则忽略 */ }
           state.socket.end("Disconnected.\r\n");
           return;
         }
