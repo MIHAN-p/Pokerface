@@ -356,9 +356,9 @@ function renderOnlineSnapshot(snapshot) {
     lines.push("");
     const resetTip = you?.isHost ? " 重置/restart" : "";
     const actionLabels = game.legalActions.map((action) => action.label).concat(["状态/st", "退出/q"]).join(" ") + resetTip;
-    // 操作栏：第一行手牌，第二行公共牌，第三行操作
-    if (hero?.hole) lines.push(`${GRN}你的手牌：${formatCardDtos(hero.hole)}${RST}`);
+    // 操作栏：第一行公共牌，第二行手牌，第三行操作
     if (game.board.length) lines.push(`${GRN}公共牌：${formatCardDtos(game.board)}${RST}`);
+    if (hero?.hole) lines.push(`${GRN}你的手牌：${formatCardDtos(hero.hole)}${RST}`);
     lines.push(`${YLW}${actionLabels}${RST}`);
   } else {
     lines.push("");
