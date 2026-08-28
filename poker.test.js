@@ -379,6 +379,30 @@ test("starting a room auto-fills empty seats with bots", () => {
   assert.equal(room.seats[1].botConfig.difficulty, "困难");
 });
 
+test("startGame during a running game is a no-op and keeps underwater state", () => {
+  const manager = new RoomManager({ adminToken: "TOKEN" });
+  const socket = { write: () => {} };
+  const room = manager.createRoom({
+    adminToken: "TOKEN",
+    sessionId: "host-session",
+    displayName: "Host",
+    config: { playerCount: 2, initialStack: 500, smallBlind: 5, bigBlind: 10 },
+    socket,
+  });
+  room.startGame("host-session");
+  const engineBefore = room.engine;
+  engineBefore.players.forEach((player) => {
+    player.underwaterHands = 3;
+    player.underwaterDebt = 120;
+  });
+
+  room.startGame("host-session");
+
+  assert.equal(room.engine, engineBefore, "牌局进行中 startGame 不应重建引擎");
+  assert.equal(room.status, "playing");
+  assert.equal(room.engine.players.every((player) => player.underwaterHands === 3), true, "水下标记应保留");
+});
+
 test("timeout fold ends only the current hand and allows next hand", async () => {
   const manager = new RoomManager({ adminToken: "TOKEN" });
   const writes = [];

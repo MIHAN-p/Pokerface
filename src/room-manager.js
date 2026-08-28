@@ -188,6 +188,8 @@ class PokerRoom {
   }
 
   startGame(sessionId) {
+    // 牌局进行中时忽略 start/s，避免误触导致重新开局、水下标记丢失
+    if (this.status === "playing") return;
     this.requireHost(sessionId);
     this.fillEmptySeatsWithBots();
     const occupied = this.seats.filter((seat) => seat.type !== "empty");
