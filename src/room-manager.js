@@ -2,11 +2,7 @@ const crypto = require('node:crypto');
 const { ActionKind } = require('./constants');
 const { Action } = require('./actions');
 const { OnlineGameEngine } = require('./online-game-engine');
-const { normalizeDifficulty, normalizeRoomConfig, purgeDeadSockets, randomCode, encodeForSocket, safeWrite, sendSnapshot } = require('./online-protocol');
-
-// 终端响铃符：Windows 控制台窗口在后台收到 BEL 会自动闪烁任务栏按钮
-const BEL = "\x07";
-const YLW = "\x1b[33m", RST = "\x1b[0m";
+const { normalizeDifficulty, normalizeRoomConfig, purgeDeadSockets, randomCode, safeWrite, sendSnapshot } = require('./online-protocol');
 
 class PokerRoom {
   constructor({ roomCode, hostSessionId, config }) {
@@ -281,8 +277,9 @@ class PokerRoom {
   }
 
   /**
-   * 轮到真人行动时，向 TA 的纯终端 CLI 连接发送响铃符（BEL）。
-   * Windows 控制台窗口在后台收到 BEL 会自动闪烁任务栏按钮，提示玩家切回窗口。
+   * 轮到真人行动时，向 TA 的纯终端 CLI 连接发送一个响铃符（BEL 脉冲）。
+   * Windows 控制台窗口在后台/最小化时收到 BEL 会自动闪烁任务栏按钮，提示玩家切回窗口。
+   * 只发原始 0x07 字节，不带任何文字/颜色，避免干扰牌桌界面。
    * 仅提醒当前行动者本人；网页(WebSocket)客户端不发送，避免干扰 JSON 协议。
    */
   ringBell() {
@@ -297,7 +294,8 @@ class PokerRoom {
     if (!seat?.sessionId) return;
     const socket = this.clients.get(seat.sessionId);
     if (!socket || socket.destroyed || !socket._pokerfaceTextClient) return; // 仅 CLI 文本客户端
-    safeWrite(socket, encodeForSocket(socket, `${BEL}${YLW}⏰ 轮到你了，${seat.displayName}！请行动${RST}\r\n`));
+    // 原始 BEL 字节，绕过一切文本编码，确保 0x07 原样到达客户端
+    safeWrite(socket, Buffer.from([0x07]));
   }
 
   syncStacksFromEngine() {
