@@ -313,8 +313,10 @@ function renderOnlineSnapshot(snapshot) {
   if (boardInfo) lines.push(boardInfo);
   if (handInfo) lines.push(handInfo);
   lines.push(section, "牌桌：");
-  // 列宽规则：每列有最小显示宽度下限（避免列间过挤），Name 列再按最长名字（含水下标记）的显示宽度扩展，其余列统一右移对齐
-  const MIN_COL_W = { seat: 3, name: 8, pos: 8, bet: 13, status: 8 };
+  // 列宽规则：每列有最小显示宽度下限（避免列间过挤，但不可过大导致行超宽折行），
+  // Name 列再按最长名字（含水下标记）的显示宽度扩展，其余列统一右移对齐。
+  // 注意：常规行(含2张手牌)总宽需 ≤ ~54 列，否则窄终端会自动折行、表格错乱。
+  const MIN_COL_W = { seat: 2, name: 6, pos: 6, bet: 12, status: 6 };
   const tableRows = game.players.map((player) => {
     const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
     return {
