@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const iconv = require("iconv-lite");
 const { ActionKind, RANK_NAMES, SUIT_NAMES } = require('./constants');
 const { Action, InputParser } = require('./actions');
+const { displayWidth, padDisplay } = require('./terminal-format');
 
 // Socket health tracking symbol
 const SOCKET_DEAD = Symbol("socket_dead");
@@ -312,19 +313,34 @@ function renderOnlineSnapshot(snapshot) {
   if (boardInfo) lines.push(boardInfo);
   if (handInfo) lines.push(handInfo);
   lines.push(section, "牌桌：");
-  lines.push("  #  Name            Pos       Stack/Bet    Status");
-  for (const player of game.players) {
+  // 列宽规则：Name 列以最长名字（含水下标记）的显示宽度为列宽，其余列统一右移对齐
+  const tableRows = game.players.map((player) => {
+    const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
+    return {
+      player,
+      uw,
+      nameRaw: player.name + uw,
+      isMe: player.seatIndex === you?.seatIndex,
+      pos: player.position || "-",
+      stackBet: `$${player.stack}/$${player.currentBet}`,
+      status: player.status,
+    };
+  });
+  const seatW = Math.max(displayWidth("#"), ...game.players.map((p) => displayWidth(`${p.seatIndex}.`)));
+  const nameW = Math.max(displayWidth("Name"), ...tableRows.map((r) => displayWidth(r.nameRaw)));
+  const posW = Math.max(displayWidth("Pos"), ...tableRows.map((r) => displayWidth(r.pos)));
+  const betW = Math.max(displayWidth("Stack/Bet"), ...tableRows.map((r) => displayWidth(r.stackBet)));
+  const statusW = Math.max(displayWidth("Status"), ...tableRows.map((r) => displayWidth(r.status)));
+  lines.push(
+    `  ${padDisplay("#", seatW)} ${padDisplay("Name", nameW)} ${padDisplay("Pos", posW)} ${padDisplay("Stack/Bet", betW)} ${padDisplay("Status", statusW)}`,
+  );
+  for (const { player, nameRaw, isMe, pos, stackBet, status } of tableRows) {
     const holeStr =
       player.hole && (player.seatIndex === you?.seatIndex || game.lastHandResult?.revealed?.[player.seatIndex])
         ? `  ${formatCardDtos(player.hole)}`
         : "";
-    const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
-    const isMe = player.seatIndex === you?.seatIndex;
-    const nameStr = (player.name + uw).padEnd(18);
-    const name = isMe ? `${BLD}${GRN}${nameStr}${RST}` : nameStr;
-    const pos = (player.position || "-").padEnd(8);
-    const stackBet = `$${player.stack}/$${player.currentBet}`.padEnd(11);
-    lines.push(`  ${player.seatIndex}. ${name} ${pos} ${stackBet} ${player.status}${holeStr}`);
+    const name = isMe ? `${BLD}${GRN}${padDisplay(nameRaw, nameW)}${RST}` : padDisplay(nameRaw, nameW);
+    lines.push(`  ${padDisplay(`${player.seatIndex}.`, seatW)} ${name} ${padDisplay(pos, posW)} ${padDisplay(stackBet, betW)} ${padDisplay(status, statusW)}${holeStr}`);
   }
   lines.push("");
   lines.push(section, "最近行动：");
@@ -337,11 +353,16 @@ function renderOnlineSnapshot(snapshot) {
     lines.push("");
     lines.push(section, "亮牌：");
     const winners = new Set(game.lastHandResult?.winners ?? []);
-    for (const player of game.players) {
+    const revealRows = game.players.map((player) => {
       const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
       const isWinner = winners.has(player.seatIndex);
-      const winLabel = isWinner ? `${RED}(赢家)${RST}` : "";
-      const name = (player.name + uw + winLabel).padEnd(18);
+      const nameRaw = player.name + uw + (isWinner ? "(赢家)" : "");
+      return { player, uw, isWinner, nameRaw };
+    });
+    const revealW = Math.max(...revealRows.map((r) => displayWidth(r.nameRaw)));
+    for (const { player, uw, isWinner, nameRaw } of revealRows) {
+      let name = padDisplay(nameRaw, revealW);
+      if (isWinner) name = name.replace("(赢家)", `${RED}(赢家)${RST}`);
       if (player.hole) {
         const handName = player.handName ? `  (${player.handName})` : "";
         lines.push(`  ${player.seatIndex}. ${name} ${formatCardDtos(player.hole)}${handName}`);
