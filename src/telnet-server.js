@@ -5,6 +5,7 @@ const { RoomManager } = require('./room-manager');
 const { Action } = require('./actions');
 const { ActionKind } = require('./constants');
 const YLW = "\x1b[33m", RST = "\x1b[0m";
+const BEL = "\x07";
 
 class TelnetPokerServer {
   constructor({ host = "0.0.0.0", port = 8787 } = {}) {
@@ -198,7 +199,7 @@ class TelnetPokerServer {
           // 广播后再发通知，避免被 snapshot 覆盖
           for (const [otherSessionId, otherSocket] of state.room.clients) {
             if (otherSessionId !== state.sessionId) {
-              sendText(otherSocket, `${YLW}${state.displayName} 加入，正在选择座位。${RST}`);
+              sendText(otherSocket, `${BEL}${YLW}${state.displayName} 加入，正在选择座位。${RST}`);
             }
           }
         }
@@ -216,6 +217,7 @@ class TelnetPokerServer {
             if (session?.seatIndex && state.room.engine.players.some((p) => p.seatIndex === session.seatIndex)) {
               state.room.engine.applySeatAction(session.seatIndex, new Action(ActionKind.FOLD));
               state.room.syncStacksFromEngine();
+              state.room.noteAction(); // 退出弃牌也算行动流转，让下一位行动者响铃
               for (const [sid, sock] of state.room.clients) {
                 sendText(sock, `${state.displayName} 退出`);
               }
@@ -343,6 +345,7 @@ class TelnetPokerServer {
           if (session?.seatIndex && state.room.engine.players.some((p) => p.seatIndex === session.seatIndex)) {
             state.room.engine.applySeatAction(session.seatIndex, new Action(ActionKind.FOLD));
             state.room.syncStacksFromEngine();
+            state.room.noteAction(); // 断线弃牌也算行动流转
             const name = state.displayName || session.displayName;
             for (const [sid, sock] of state.room.clients) {
               if (sid !== state.sessionId) sendText(sock, `${name} 退出`);

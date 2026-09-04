@@ -313,7 +313,8 @@ function renderOnlineSnapshot(snapshot) {
   if (boardInfo) lines.push(boardInfo);
   if (handInfo) lines.push(handInfo);
   lines.push(section, "牌桌：");
-  // 列宽规则：Name 列以最长名字（含水下标记）的显示宽度为列宽，其余列统一右移对齐
+  // 列宽规则：每列有最小显示宽度下限（避免列间过挤），Name 列再按最长名字（含水下标记）的显示宽度扩展，其余列统一右移对齐
+  const MIN_COL_W = { seat: 3, name: 8, pos: 8, bet: 13, status: 8 };
   const tableRows = game.players.map((player) => {
     const uw = player.underwaterHands ? `(-${player.underwaterHands}*)` : "";
     return {
@@ -326,11 +327,11 @@ function renderOnlineSnapshot(snapshot) {
       status: player.status,
     };
   });
-  const seatW = Math.max(displayWidth("#"), ...game.players.map((p) => displayWidth(`${p.seatIndex}.`)));
-  const nameW = Math.max(displayWidth("Name"), ...tableRows.map((r) => displayWidth(r.nameRaw)));
-  const posW = Math.max(displayWidth("Pos"), ...tableRows.map((r) => displayWidth(r.pos)));
-  const betW = Math.max(displayWidth("Stack/Bet"), ...tableRows.map((r) => displayWidth(r.stackBet)));
-  const statusW = Math.max(displayWidth("Status"), ...tableRows.map((r) => displayWidth(r.status)));
+  const seatW = Math.max(MIN_COL_W.seat, displayWidth("#"), ...game.players.map((p) => displayWidth(`${p.seatIndex}.`)));
+  const nameW = Math.max(MIN_COL_W.name, displayWidth("Name"), ...tableRows.map((r) => displayWidth(r.nameRaw)));
+  const posW = Math.max(MIN_COL_W.pos, displayWidth("Pos"), ...tableRows.map((r) => displayWidth(r.pos)));
+  const betW = Math.max(MIN_COL_W.bet, displayWidth("Stack/Bet"), ...tableRows.map((r) => displayWidth(r.stackBet)));
+  const statusW = Math.max(MIN_COL_W.status, displayWidth("Status"), ...tableRows.map((r) => displayWidth(r.status)));
   lines.push(
     `  ${padDisplay("#", seatW)} ${padDisplay("Name", nameW)} ${padDisplay("Pos", posW)} ${padDisplay("Stack/Bet", betW)} ${padDisplay("Status", statusW)}`,
   );

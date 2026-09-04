@@ -2,7 +2,11 @@ const crypto = require('node:crypto');
 const { ActionKind } = require('./constants');
 const { Action } = require('./actions');
 const { OnlineGameEngine } = require('./online-game-engine');
-const { normalizeDifficulty, normalizeRoomConfig, purgeDeadSockets, randomCode, sendSnapshot } = require('./online-protocol');
+const { normalizeDifficulty, normalizeRoomConfig, purgeDeadSockets, randomCode, encodeForSocket, safeWrite, sendSnapshot } = require('./online-protocol');
+
+// 终端响铃符：Windows 控制台窗口在后台收到 BEL 会自动闪烁任务栏按钮
+const BEL = "\x07";
+const YLW = "\x1b[33m", RST = "\x1b[0m";
 
 class PokerRoom {
   constructor({ roomCode, hostSessionId, config }) {
@@ -27,6 +31,8 @@ class PokerRoom {
     this.processedActions = new Set();
     this.actionTimer = null;
     this.actionDeadline = null;
+    this._actionSerial = 0; // 每次真实行动流转 +1，用于去重响铃
+    this._bellRungSerial = -1; // 最近一次已响铃的序列号
     this.createdAt = new Date();
     this.updatedAt = new Date();
     this.pendingCloseTimer = null; // 断线宽限期计时器
@@ -200,6 +206,7 @@ class PokerRoom {
     this.engine.startHand();
     this.status = "playing";
     this.updatedAt = new Date();
+    this.noteAction();
   }
 
   nextHand(sessionId) {
@@ -224,6 +231,7 @@ class PokerRoom {
     this.status = "playing";
     this.processedActions.clear();
     this.updatedAt = new Date();
+    this.noteAction();
   }
 
   resetGame(sessionId) {
@@ -261,6 +269,35 @@ class PokerRoom {
     if (key) this.processedActions.add(key);
     if (this.engine.handFinished) this.syncStacksFromEngine();
     this.updatedAt = new Date();
+    this.noteAction();
+  }
+
+  /**
+   * 行动流转计数：每次真实行动（含开局/超时弃牌）后 +1。
+   * 供响铃去重使用，避免同一等待状态被多次广播重复提醒。
+   */
+  noteAction() {
+    this._actionSerial += 1;
+  }
+
+  /**
+   * 轮到真人行动时，向 TA 的纯终端 CLI 连接发送响铃符（BEL）。
+   * Windows 控制台窗口在后台收到 BEL 会自动闪烁任务栏按钮，提示玩家切回窗口。
+   * 仅提醒当前行动者本人；网页(WebSocket)客户端不发送，避免干扰 JSON 协议。
+   */
+  ringBell() {
+    if (!this.engine || this.engine.handFinished) return;
+    const idx = this.engine.actionIndex;
+    if (idx === null || idx === undefined || idx < 0) return;
+    const player = this.engine.players[idx];
+    if (!player?.isHuman) return; // AI 自动行动，无需提醒
+    if (this._bellRungSerial === this._actionSerial) return; // 同一流转状态已提醒过
+    this._bellRungSerial = this._actionSerial;
+    const seat = this.getSeat(player.seatIndex);
+    if (!seat?.sessionId) return;
+    const socket = this.clients.get(seat.sessionId);
+    if (!socket || socket.destroyed || !socket._pokerfaceTextClient) return; // 仅 CLI 文本客户端
+    safeWrite(socket, encodeForSocket(socket, `${BEL}${YLW}⏰ 轮到你了，${seat.displayName}！请行动${RST}\r\n`));
   }
 
   syncStacksFromEngine() {
@@ -319,6 +356,8 @@ class PokerRoom {
     for (const [sessionId, socket] of this.clients) {
       sendSnapshot(socket, this.snapshotFor(sessionId));
     }
+    // 快照之后再响铃：轮到真人行动时闪烁 TA 终端窗口的任务栏（仅 CLI 文本客户端）
+    this.ringBell();
   }
 
   scheduleActionTimeout() {
@@ -336,6 +375,7 @@ class PokerRoom {
         if (!this.engine || this.engine.handFinished || this.engine.players[this.engine.actionIndex]?.seatIndex !== player.seatIndex) return;
         this.engine.applySeatAction(player.seatIndex, new Action(ActionKind.FOLD));
         if (this.engine.handFinished) this.syncStacksFromEngine();
+        this.noteAction(); // 超时弃牌也是一次行动流转
         this.broadcast();
       } catch {
         // 超时兜底不能影响服务端主循环。
