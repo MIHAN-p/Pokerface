@@ -38,7 +38,6 @@ class GameEngine {
     this.actionIndex = null;
     this.pendingHumanRaw = null;
     this.logs = [];
-    this.actionHistory = [];
     this.bot = new BotPlayer(this.rng);
     this.quitRequested = false;
   }
@@ -62,7 +61,6 @@ class GameEngine {
     this.currentBet = 0;
     this.minRaise = this.config.bigBlind;
     this.logs = [];
-    this.actionHistory = [];
     this.deck = new Deck(this.rng);
     this.deck.shuffle();
     for (const player of this.players) {
@@ -145,7 +143,6 @@ class GameEngine {
 
   resetStreetBets() {
     this.currentBet = 0;
-    this.minRaise = this.config.bigBlind;
     for (const player of this.players) player.resetForStreet();
   }
 
@@ -190,7 +187,6 @@ class GameEngine {
           currentBet: this.currentBet,
           bigBlind: this.config.bigBlind,
           difficulty: this.config.difficulty,
-          ...this.botContext(player),
           }),
         );
       }
@@ -253,23 +249,12 @@ class GameEngine {
   applyAction(idx, action) {
     const player = this.players[idx];
     const toCall = this.currentBet - player.currentBet;
-    const previousBet = this.currentBet;
-    const potBefore = this.pot;
-    const committedBefore = player.currentBet;
-    const record = (aggressive) => this.actionHistory.push({
-      playerIndex: idx, position: this.positionName(idx), stage: this.stage,
-      kind: action.kind, aggressive, potBefore, toCall,
-      paid: player.currentBet - committedBefore, target: player.currentBet,
-      // A raise is measured after matching the outstanding wager.
-      betSize: aggressive ? (player.currentBet - previousBet) / Math.max(1, potBefore + toCall) : 0,
-    });
     let raised = false;
 
     if (action.kind === ActionKind.FOLD) {
       player.folded = true;
       player.lastAction = "弃牌";
       this.logs.push(`${player.name} 弃牌`);
-      record(false);
       return false;
     }
     if (action.kind === ActionKind.CHECK_CALL) {
@@ -282,7 +267,6 @@ class GameEngine {
         player.lastAction = `跟注 ${committed}`;
         this.logs.push(`${player.name} 跟注 ${committed}`);
       }
-      record(false);
       return false;
     }
     if (action.kind === ActionKind.BET) {
@@ -317,28 +301,11 @@ class GameEngine {
       }
       this.logs.push(`${player.name} 全下到 ${player.currentBet}`);
     }
-    if (raised) this.minRaise = Math.max(this.minRaise, this.currentBet - previousBet);
-    record(raised);
     if (raised && !player.isHuman) {
       if (this.isLikelyBluff(player)) player.bluffStreak += 1;
       else player.bluffStreak = 0;
     }
     return raised;
-  }
-
-  botContext(player) {
-    const playerIndex = this.players.indexOf(player);
-    const order = [];
-    for (let step = 1; step <= this.players.length; step += 1) {
-      const index = (this.dealer + step) % this.players.length;
-      if (this.players[index].active && !this.players[index].allIn) order.push(index);
-    }
-    return {
-      playerIndex, position: this.positionName(playerIndex),
-      inPosition: order.at(-1) === playerIndex,
-      history: this.actionHistory, minRaise: this.minRaise,
-      personality: player.botConfig?.personality ?? player.botConfig?.style ?? 'balanced',
-    };
   }
 
   commit(player, amount) {
