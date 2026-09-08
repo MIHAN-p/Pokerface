@@ -41,6 +41,7 @@ class OnlineGameEngine extends GameEngine {
     this.currentBet = 0;
     this.minRaise = this.config.bigBlind;
     this.logs = [];
+    this.actionHistory = [];
     this.deck = new Deck(this.rng);
     this.deck.shuffle();
     this.actionState = { acted: new Set() };
@@ -109,6 +110,7 @@ class OnlineGameEngine extends GameEngine {
           currentBet: this.currentBet,
           bigBlind: this.config.bigBlind,
           difficulty,
+          ...this.botContext(player),
         }),
       );
       const action = this.safeBotAction(player, proposed);

@@ -4,6 +4,7 @@ const net = require("node:net");
 const {
   Action,
   ActionKind,
+  BotPlayer,
   Card,
   Deck,
   GameEngine,
@@ -403,7 +404,9 @@ test("startGame during a running game is a no-op and keeps underwater state", ()
   assert.equal(room.engine.players.every((player) => player.underwaterHands === 3), true, "水下标记应保留");
 });
 
-test("timeout fold ends only the current hand and allows next hand", async () => {
+test("timeout fold ends only the current hand and allows next hand", async (t) => {
+  // Exercise room lifecycle independently of dealt cards and bot strategy.
+  t.mock.method(BotPlayer.prototype, "decide", () => new Action(ActionKind.CHECK_CALL));
   const manager = new RoomManager({ adminToken: "TOKEN" });
   const writes = [];
   const socket = { write: (text) => writes.push(text), _pokerfaceTextClient: true };
